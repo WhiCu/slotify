@@ -1,0 +1,8 @@
+openapi: 3.0.3
+info:
+  title: Slotify API
+  description: 
+  version: "0.1.0"
+
+servers:
+  - url: http://localhost:8081
