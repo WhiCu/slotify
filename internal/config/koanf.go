@@ -44,7 +44,6 @@ func NewKoanf(fsys fs.FS, path string) (*koanf.Koanf, error) {
 		},
 	}), nil)
 
-	// uncovered: load env provider never returns an error natively
 	if err != nil {
 		return nil, fmt.Errorf("load env config: %w", err)
 	}
@@ -68,6 +67,8 @@ func ResolvePath(def string) (string, error) {
 		return "", ErrPathNotSet
 	}
 	cleanPath := filepath.Clean(path)
+
+	//nolint:gosec // check if file exists
 	if _, err := os.Stat(cleanPath); errors.Is(err, os.ErrNotExist) {
 		return "", ErrPathNotExist
 	}

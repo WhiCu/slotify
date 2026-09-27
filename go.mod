@@ -4,6 +4,8 @@ go 1.27.0
 
 require (
 	github.com/amirsalarsafaei/sqlc-pgx-monitoring v1.7.3
+	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/cors v1.2.2
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
