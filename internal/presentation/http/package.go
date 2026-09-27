@@ -14,3 +14,7 @@ func newConfig(i do.Injector) (Config, error) {
 	def := defaultCfg
 	return config.GetConfig(k, "http", &def)
 }
+
+var Package = do.Package(
+	do.Lazy(newConfig),
+)

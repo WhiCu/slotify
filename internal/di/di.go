@@ -92,8 +92,8 @@ func Run(ctx context.Context, injector *do.RootScope, cfg Config) error {
 		return fmt.Errorf("init logger: %w", err)
 	}
 
-	if err := serve(ctx, log, srv); err != nil {
-		return err
+	if errServe := serve(ctx, log, srv); errServe != nil {
+		return errServe
 	}
 
 	return waitForShutdown(ctx, injector)
@@ -123,13 +123,13 @@ func initTelemetry(injector do.Injector) error {
 	return nil
 }
 
-func initLogger(injector do.Injector) (*slog.Logger, error) {
-	log, err := do.Invoke[*slog.Logger](injector)
-	if err != nil {
-		return nil, fmt.Errorf("init logger: %w", err)
-	}
-	return log, nil
-}
+// func initLogger(injector do.Injector) (*slog.Logger, error) {
+// 	log, err := do.Invoke[*slog.Logger](injector)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("init logger: %w", err)
+// 	}
+// 	return log, nil
+// }
 
 func initStorage(ctx context.Context, injector do.Injector) error {
 	srg, err := do.Invoke[*storage.Storage](injector)
