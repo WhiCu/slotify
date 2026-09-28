@@ -1,196 +1,180 @@
+-- ============================================================
+-- Users
+-- ============================================================
+
+-- name: CountUsers :one
+SELECT count(*)::bigint
+FROM users;
+
+
+-- name: LockRootCreation :exec
+SELECT pg_advisory_xact_lock(
+    hashtextextended('slotify:create-root-user', 0)
+);
+
+
 -- name: SaveUser :exec
 INSERT INTO users (
     id,
     role,
-    invited_by,
     created_at
 )
 VALUES (
     sqlc.arg(id),
-    sqlc.arg(role),
-    sqlc.narg(invited_by),
+    sqlc.arg(role)::user_role,
     sqlc.arg(created_at)
-);
+)
+ON CONFLICT (id) DO UPDATE
+SET
+    role = EXCLUDED.role;
 
--- name: FindRootUser :one
-SELECT * FROM users WHERE invited_by IS NULL LIMIT 1;
 
 -- name: FindUserByID :one
-SELECT * FROM users WHERE id = sqlc.arg(id);
-
--- name: ListDescendantUserIDs :many
-WITH RECURSIVE compromised_chain AS (
-    SELECT users.id
-    FROM users
-    WHERE users.id = sqlc.arg(root)
-
-    UNION ALL
-
-    SELECT u.id
-    FROM users u
-    JOIN compromised_chain cc
-        ON u.invited_by = cc.id
-)
-SELECT cc.id
-FROM compromised_chain cc;
-
-
--- name: FindCredentialByExternalID :one
 SELECT *
-FROM credentials
-WHERE external_id = sqlc.arg(external_id);
+FROM users
+WHERE id = sqlc.arg(id);
 
 
--- name: FindCredentialByExternalIDForUpdate :one
+-- name: FindUserByIDForUpdate :one
 SELECT *
-FROM credentials
-WHERE external_id = sqlc.arg(external_id)
-FOR UPDATE;
-
-
--- name: ListCredentialsByUserID :many
-SELECT *
-FROM credentials
-WHERE user_id = sqlc.arg(user_id)
-ORDER BY created_at;
-
-
--- name: SaveCredential :exec
-INSERT INTO credentials (
-    id,
-    external_id,
-    user_id,
-    public_key,
-    sign_count,
-    transports,
-    created_at,
-    revoked_at
-)
-VALUES (
-    sqlc.arg(id),
-    sqlc.arg(external_id),
-    sqlc.arg(user_id),
-    sqlc.arg(public_key),
-    sqlc.arg(sign_count),
-    sqlc.arg(transports),
-    sqlc.arg(created_at),
-    sqlc.narg(revoked_at)
-)
-ON CONFLICT (id) DO UPDATE
-SET
-    sign_count = EXCLUDED.sign_count,
-    revoked_at = EXCLUDED.revoked_at;
-
-
--- name: CountActiveInvitesByUser :one
-SELECT count(*)
-FROM invites
-WHERE created_by = sqlc.arg(created_by)
-    AND used_at IS NULL
-    AND expires_at > sqlc.arg(now);
-
-
--- name: LockUserByID :exec
-SELECT pg_advisory_xact_lock(
-    hashtextextended(sqlc.arg(user_id)::text, 0)
-);
-
-
--- name: FindInviteByCodeHash :one
-SELECT *
-FROM invites
-WHERE code_hash = sqlc.arg(code_hash);
-
-
--- name: FindInviteByIDForUpdate :one
-SELECT *
-FROM invites
+FROM users
 WHERE id = sqlc.arg(id)
 FOR UPDATE;
 
 
--- name: SaveInvite :exec
-INSERT INTO invites (
+-- name: ListUsers :many
+SELECT *
+FROM users
+ORDER BY created_at, id;
+
+
+-- name: DeleteUser :exec
+DELETE FROM users
+WHERE id = sqlc.arg(id);
+
+
+-- ============================================================
+-- Spaces
+-- ============================================================
+
+-- name: SaveSpace :exec
+INSERT INTO spaces (
     id,
-    created_by,
-    code_hash,
-    used_by,
-    used_at,
-    expires_at,
+    name,
+    type,
+    capacity,
+    active,
     created_at
 )
 VALUES (
     sqlc.arg(id),
-    sqlc.arg(created_by),
-    sqlc.arg(code_hash),
-    sqlc.narg(used_by),
-    sqlc.narg(used_at),
-    sqlc.arg(expires_at),
+    sqlc.arg(name),
+    sqlc.arg(type)::space_type,
+    sqlc.arg(capacity),
+    sqlc.arg(active),
     sqlc.arg(created_at)
 )
 ON CONFLICT (id) DO UPDATE
 SET
-    used_by = EXCLUDED.used_by,
-    used_at = EXCLUDED.used_at;
+    name = EXCLUDED.name,
+    type = EXCLUDED.type,
+    capacity = EXCLUDED.capacity,
+    active = EXCLUDED.active;
 
 
--- name: FindRefreshTokenByTokenHash :one
+-- name: FindSpaceByID :one
 SELECT *
-FROM refresh_tokens
-WHERE token_hash = sqlc.arg(token_hash);
+FROM spaces
+WHERE id = sqlc.arg(id);
 
 
--- name: FindRefreshTokenByTokenHashForUpdate :one
+-- name: FindSpaceByIDForUpdate :one
 SELECT *
-FROM refresh_tokens
-WHERE token_hash = sqlc.arg(token_hash)
-FOR UPDATE;
-
-
--- name: ListActiveRefreshTokensByUserIDs :many
-SELECT *
-FROM refresh_tokens
-WHERE user_id = ANY(sqlc.arg(user_ids)::uuid[])
-    AND revoked_at IS NULL
-    AND expires_at > sqlc.arg(now);
-
--- name: FindRefreshTokenByIDForUpdate :one
-SELECT *
-FROM refresh_tokens
+FROM spaces
 WHERE id = sqlc.arg(id)
 FOR UPDATE;
 
 
--- name: SaveRefreshTokens :batchexec
-INSERT INTO refresh_tokens (
-    id,
-    user_id,
-    token_hash,
-    device_info,
-    ip_address,
-    expires_at,
-    revoked_at,
-    created_at
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (id) DO UPDATE
-SET
-    revoked_at = EXCLUDED.revoked_at;
-
-
--- name: SaveWrappedKeys :copyfrom
-INSERT INTO wrapped_keys (
-    id,
-    user_id,
-    credential_id,
-    scope,
-    wrapped_dek,
-    wrap_algorithm,
-    created_at
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
-
--- name: ListWrappedKeysByCredentialID :many
+-- name: ListSpaces :many
 SELECT *
-FROM wrapped_keys
-WHERE credential_id = sqlc.arg(credential_id);
+FROM spaces
+WHERE
+    NOT sqlc.arg(only_active)::boolean
+    OR active
+ORDER BY name, id;
+
+
+-- name: DeleteSpace :exec
+DELETE FROM spaces
+WHERE id = sqlc.arg(id);
+
+
+-- ============================================================
+-- Reservations
+-- ============================================================
+
+-- name: SaveReservations :batchexec
+INSERT INTO reservations (
+    id,
+    space_id,
+    user_id,
+    date,
+    slot,
+    created_at
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+);
+
+
+-- name: FindReservationByID :one
+SELECT *
+FROM reservations
+WHERE id = sqlc.arg(id);
+
+
+-- name: FindReservationByIDForUpdate :one
+SELECT *
+FROM reservations
+WHERE id = sqlc.arg(id)
+FOR UPDATE;
+
+
+-- name: HasReservationConflict :one
+SELECT EXISTS (
+    SELECT 1
+    FROM reservations
+    WHERE space_id = sqlc.arg(space_id)
+      AND date = sqlc.arg(date)
+      AND slot = ANY(sqlc.arg(slots)::smallint[])
+) AS conflict;
+
+
+-- name: ListReservationsBySpaceAndDate :many
+SELECT *
+FROM reservations
+WHERE space_id = sqlc.arg(space_id)
+  AND date = sqlc.arg(date)
+ORDER BY slot;
+
+
+-- name: ListReservationsByUserID :many
+SELECT *
+FROM reservations
+WHERE user_id = sqlc.arg(user_id)
+ORDER BY date, space_id, slot;
+
+
+-- name: DeleteReservationsByIDs :exec
+DELETE FROM reservations
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+
+
+-- name: DeleteReservationsByUserID :exec
+DELETE FROM reservations
+WHERE user_id = sqlc.arg(user_id);

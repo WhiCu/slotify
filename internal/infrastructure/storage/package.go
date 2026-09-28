@@ -37,7 +37,37 @@ func newStorage(i do.Injector) (*Storage, error) {
 	return NewStorage(ctx, log, cfg)
 }
 
+func newUserRepository(i do.Injector) (*UserRepository, error) {
+	storage, err := do.Invoke[*Storage](i)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewUserRepository(storage), nil
+}
+
+func newSpaceRepository(i do.Injector) (*SpaceRepository, error) {
+	storage, err := do.Invoke[*Storage](i)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewSpaceRepository(storage), nil
+}
+
+func newReservationRepository(i do.Injector) (*ReservationRepository, error) {
+	storage, err := do.Invoke[*Storage](i)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewReservationRepository(storage), nil
+}
+
 var Package = do.Package(
 	do.Lazy(newConfig),
 	do.Lazy(newStorage),
+	do.Lazy(newUserRepository),
+	do.Lazy(newSpaceRepository),
+	do.Lazy(newReservationRepository),
 )

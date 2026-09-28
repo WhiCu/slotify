@@ -22,6 +22,28 @@ sql:
               type: "Time"
               pointer: true
 
+          # smallint (переопределено через внутренний тип int2)
+          - db_type: "pg_catalog.int2"
+            go_type: "int"
+            nullable: false
+
+          - db_type: "pg_catalog.int2"
+            nullable: true
+            go_type:
+              type: "int"
+              pointer: true
+
+          # integer (переопределено через внутренний тип int4)
+          - db_type: "pg_catalog.int4"
+            go_type: "int"
+            nullable: false
+          
+          - db_type: "pg_catalog.int4"
+            nullable: true
+            go_type:
+              type: "int"
+              pointer: true
+
           # uuid
           - db_type: "uuid"
             go_type: "github.com/google/uuid.UUID"
@@ -34,6 +56,9 @@ sql:
           - db_type: "inet"
             go_type: "net/netip.Addr"
             nullable: false
-          
-          - column: "credentials.sign_count"
-            go_type: "uint32"
+
+          # date
+          - column: "reservations.date"
+            go_type:
+              import: "time"
+              type: "Time"
