@@ -19,7 +19,7 @@ type Reservation struct {
 	id        ReservationID
 	spaceID   space.SpaceID
 	userID    user.UserID
-	date      time.Time
+	date      Date
 	slot      Slot
 	createdAt time.Time
 }
@@ -28,7 +28,7 @@ func NewReservation(
 	id ReservationID,
 	spaceID space.SpaceID,
 	userID user.UserID,
-	date time.Time,
+	date Date,
 	slot Slot,
 	createdAt time.Time,
 ) (r *Reservation, err error) {
@@ -55,10 +55,10 @@ func NewReservation(
 func (r *Reservation) ID() ReservationID      { return r.id }
 func (r *Reservation) SpaceID() space.SpaceID { return r.spaceID }
 func (r *Reservation) UserID() user.UserID    { return r.userID }
-func (r *Reservation) Date() time.Time        { return r.date }
+func (r *Reservation) Date() Date             { return r.date }
 func (r *Reservation) Slot() Slot             { return r.slot }
 func (r *Reservation) CreatedAt() time.Time   { return r.createdAt }
 
-func Reconstruct(id ReservationID, spaceID space.SpaceID, userID user.UserID, date time.Time, slot Slot, createdAt time.Time) *Reservation {
+func Reconstruct(id ReservationID, spaceID space.SpaceID, userID user.UserID, date Date, slot Slot, createdAt time.Time) *Reservation {
 	return &Reservation{id: id, spaceID: spaceID, userID: userID, date: date, slot: slot, createdAt: createdAt}
 }

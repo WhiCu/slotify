@@ -21,11 +21,9 @@ import (
 )
 
 type Config struct {
-	CfgView     bool
-	RootInvites struct {
-		CountInvites int
-		Out          io.Writer
-	}
+	CfgView      bool
+	Out          io.Writer
+	UpMigrations bool
 }
 
 func New(ctx context.Context, fsys fs.FS, configPath string) *do.RootScope {

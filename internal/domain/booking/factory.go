@@ -10,7 +10,7 @@ import (
 func NewReservations(
 	spaceID space.SpaceID,
 	userID user.UserID,
-	date time.Time,
+	date Date,
 	slots []Slot,
 	idFn func() ReservationID,
 	now time.Time,
