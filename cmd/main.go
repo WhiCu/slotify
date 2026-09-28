@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -58,9 +57,9 @@ func cmdRun() error {
 				Sources: cli.EnvVars("CFG_VIEW"),
 			},
 			&cli.BoolFlag{
-				Name:    "count-invites",
-				Aliases: []string{"i"},
-				Usage:   "Number of root invite codes to generate on startup",
+				Name:    "up-migrate",
+				Usage:   "Run database migrations on startup",
+				Sources: cli.EnvVars("UP_MIGRATE"),
 			},
 			&cli.BoolFlag{
 				Name:    "samber-web-debug",
@@ -94,14 +93,9 @@ func cmdRun() error {
 			)
 
 			runCfg := di.Config{
-				CfgView: cmd.Bool("cfg-view"),
-				RootInvites: struct {
-					CountInvites int
-					Out          io.Writer
-				}{
-					CountInvites: cmd.Count("count-invites"),
-					Out:          os.Stdout,
-				},
+				CfgView:      cmd.Bool("cfg-view"),
+				Out:          os.Stdout,
+				UpMigrations: cmd.Bool("up-migrate"),
 			}
 
 			if errRun := di.Run(ctx, injector, runCfg); errRun != nil {
