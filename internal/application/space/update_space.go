@@ -11,23 +11,44 @@ import (
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+type UpdateSpaceUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type UpdateSpaceFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainspace.SpaceID,
+	) (*domainspace.Space, error)
+}
+
+type UpdateSpaceSaver interface {
+	Save(ctx context.Context, s *domainspace.Space) error
+}
+
 type UpdateSpace struct {
 	log        *slog.Logger
-	spaces     SpaceRepository
-	users      UserRepository
+	users      UpdateSpaceUserFinder
+	spaces     UpdateSpaceFinder
+	saver      UpdateSpaceSaver
 	transactor Transactor
 }
 
 func NewUpdateSpace(
 	log *slog.Logger,
-	spaces SpaceRepository,
-	users UserRepository,
+	users UpdateSpaceUserFinder,
+	spaces UpdateSpaceFinder,
+	saver UpdateSpaceSaver,
 	transactor Transactor,
 ) *UpdateSpace {
 	return &UpdateSpace{
 		log:        log,
-		spaces:     spaces,
 		users:      users,
+		spaces:     spaces,
+		saver:      saver,
 		transactor: transactor,
 	}
 }
@@ -47,8 +68,13 @@ type UpdateSpaceOutput struct {
 	Active   bool
 }
 
-func (u *UpdateSpace) Execute(ctx context.Context, in UpdateSpaceInput) (*UpdateSpaceOutput, error) {
-	u.log.DebugContext(ctx, "executing update space",
+func (u *UpdateSpace) Execute(
+	ctx context.Context,
+	in UpdateSpaceInput,
+) (*UpdateSpaceOutput, error) {
+	u.log.DebugContext(
+		ctx,
+		"executing update space",
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
@@ -56,56 +82,42 @@ func (u *UpdateSpace) Execute(ctx context.Context, in UpdateSpaceInput) (*Update
 	var out UpdateSpaceOutput
 
 	err := u.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		actor, txErr := u.users.FindByID(ctx, in.ActorID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
+		actor, err := u.users.FindByIDForUpdate(ctx, in.ActorID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
 				return ErrUserNotFound
 			}
-			return fmt.Errorf("find actor: %w", txErr)
+
+			return fmt.Errorf("find actor: %w", err)
 		}
 
 		if !actor.IsAdmin() {
-			u.log.WarnContext(ctx, "non-admin attempted to update space",
-				slog.String("actor_id", in.ActorID.String()),
-			)
 			return ErrNotAdmin
 		}
 
-		s, txErr := u.spaces.FindByID(ctx, in.SpaceID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
-				u.log.WarnContext(ctx, "space not found", slog.String("space_id", in.SpaceID.String()))
+		s, err := u.spaces.FindByIDForUpdate(ctx, in.SpaceID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
 				return ErrSpaceNotFound
 			}
-			return fmt.Errorf("find space: %w", txErr)
+
+			return fmt.Errorf("find space: %w", err)
 		}
 
 		if in.Name != nil {
-			if txErr = s.Rename(*in.Name); txErr != nil {
-				u.log.WarnContext(ctx, "domain rejected rename",
-					slog.String("space_id", in.SpaceID.String()),
-					slog.Any("error", txErr),
-				)
-				return txErr
+			if errRename := s.Rename(*in.Name); errRename != nil {
+				return errRename
 			}
 		}
 
 		if in.Capacity != nil {
-			if txErr = s.ChangeCapacity(*in.Capacity); txErr != nil {
-				u.log.WarnContext(ctx, "domain rejected capacity change",
-					slog.String("space_id", in.SpaceID.String()),
-					slog.Any("error", txErr),
-				)
-				return txErr
+			if errChangeCapacity := s.ChangeCapacity(*in.Capacity); errChangeCapacity != nil {
+				return errChangeCapacity
 			}
 		}
 
-		if txErr = u.spaces.Save(ctx, s); txErr != nil {
-			u.log.ErrorContext(ctx, "failed to save space",
-				slog.String("space_id", s.ID().String()),
-				slog.Any("error", txErr),
-			)
-			return fmt.Errorf("save space: %w", txErr)
+		if errSave := u.saver.Save(ctx, s); errSave != nil {
+			return fmt.Errorf("save space: %w", errSave)
 		}
 
 		out = UpdateSpaceOutput{
@@ -120,11 +132,12 @@ func (u *UpdateSpace) Execute(ctx context.Context, in UpdateSpaceInput) (*Update
 	})
 
 	if err != nil {
-		u.log.ErrorContext(ctx, "update space failed", slog.Any("error", err))
 		return nil, err
 	}
 
-	u.log.InfoContext(ctx, "space updated",
+	u.log.InfoContext(
+		ctx,
+		"space updated",
 		slog.String("space_id", out.ID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)

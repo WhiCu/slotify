@@ -9,16 +9,25 @@ import (
 
 	"github.com/whicu/slotify/internal/domain"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
+	domainspace "github.com/whicu/slotify/internal/domain/space"
+	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
+
+type GetBookingFinder interface {
+	FindByID(
+		ctx context.Context,
+		id domainbooking.ReservationID,
+	) (*domainbooking.Reservation, error)
+}
 
 type GetBooking struct {
 	log          *slog.Logger
-	reservations ReservationRepository
+	reservations GetBookingFinder
 }
 
 func NewGetBooking(
 	log *slog.Logger,
-	reservations ReservationRepository,
+	reservations GetBookingFinder,
 ) *GetBooking {
 	return &GetBooking{
 		log:          log,
@@ -28,35 +37,38 @@ func NewGetBooking(
 
 type GetBookingOutput struct {
 	ID        domainbooking.ReservationID
-	SpaceID   string
-	UserID    string
-	Date      string
-	Slot      int
-	CreatedAt string
+	SpaceID   domainspace.SpaceID
+	UserID    domainuser.UserID
+	Date      domainbooking.Date
+	Slot      domainbooking.Slot
+	CreatedAt time.Time
 }
 
-func (g *GetBooking) Execute(ctx context.Context, id domainbooking.ReservationID) (*GetBookingOutput, error) {
-	g.log.DebugContext(ctx, "executing get booking", slog.String("reservation_id", id.String()))
+func (g *GetBooking) Execute(
+	ctx context.Context,
+	id domainbooking.ReservationID,
+) (*GetBookingOutput, error) {
+	g.log.DebugContext(
+		ctx,
+		"executing get booking",
+		slog.String("reservation_id", id.String()),
+	)
 
 	r, err := g.reservations.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			g.log.WarnContext(ctx, "reservation not found", slog.String("reservation_id", id.String()))
 			return nil, ErrReservationNotFound
 		}
-		g.log.ErrorContext(ctx, "failed to find reservation",
-			slog.String("reservation_id", id.String()),
-			slog.Any("error", err),
-		)
+
 		return nil, fmt.Errorf("find reservation: %w", err)
 	}
 
 	return &GetBookingOutput{
 		ID:        r.ID(),
-		SpaceID:   r.SpaceID().String(),
-		UserID:    r.UserID().String(),
-		Date:      r.Date().Format(time.DateOnly),
-		Slot:      r.Slot().Int(),
-		CreatedAt: r.CreatedAt().Format(time.RFC3339),
+		SpaceID:   r.SpaceID(),
+		UserID:    r.UserID(),
+		Date:      r.Date(),
+		Slot:      r.Slot(),
+		CreatedAt: r.CreatedAt(),
 	}, nil
 }

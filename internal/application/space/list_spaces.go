@@ -8,14 +8,21 @@ import (
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 )
 
+type ListSpacesLister interface {
+	List(
+		ctx context.Context,
+		onlyActive bool,
+	) ([]*domainspace.Space, error)
+}
+
 type ListSpaces struct {
 	log    *slog.Logger
-	spaces SpaceRepository
+	spaces ListSpacesLister
 }
 
 func NewListSpaces(
 	log *slog.Logger,
-	spaces SpaceRepository,
+	spaces ListSpacesLister,
 ) *ListSpaces {
 	return &ListSpaces{
 		log:    log,
@@ -39,26 +46,23 @@ type ListSpacesOutput struct {
 	Spaces []ListSpacesItem
 }
 
-func (l *ListSpaces) Execute(ctx context.Context, in ListSpacesInput) (*ListSpacesOutput, error) {
-	l.log.DebugContext(ctx, "executing list spaces", slog.Bool("only_active", in.OnlyActive))
-
-	var (
-		all []*domainspace.Space
-		err error
+func (l *ListSpaces) Execute(
+	ctx context.Context,
+	in ListSpacesInput,
+) (*ListSpacesOutput, error) {
+	l.log.DebugContext(
+		ctx,
+		"executing list spaces",
+		slog.Bool("only_active", in.OnlyActive),
 	)
 
-	if in.OnlyActive {
-		all, err = l.spaces.ListActive(ctx)
-	} else {
-		all, err = l.spaces.ListAll(ctx)
-	}
-
+	all, err := l.spaces.List(ctx, in.OnlyActive)
 	if err != nil {
-		l.log.ErrorContext(ctx, "failed to list spaces", slog.Any("error", err))
 		return nil, fmt.Errorf("list spaces: %w", err)
 	}
 
 	items := make([]ListSpacesItem, 0, len(all))
+
 	for _, s := range all {
 		items = append(items, ListSpacesItem{
 			ID:       s.ID(),
@@ -69,10 +73,14 @@ func (l *ListSpaces) Execute(ctx context.Context, in ListSpacesInput) (*ListSpac
 		})
 	}
 
-	l.log.InfoContext(ctx, "spaces listed",
+	l.log.InfoContext(
+		ctx,
+		"spaces listed",
 		slog.Int("count", len(items)),
 		slog.Bool("only_active", in.OnlyActive),
 	)
 
-	return &ListSpacesOutput{Spaces: items}, nil
+	return &ListSpacesOutput{
+		Spaces: items,
+	}, nil
 }

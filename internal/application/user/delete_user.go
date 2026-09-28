@@ -1,6 +1,7 @@
 package user
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,22 +11,53 @@ import (
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+var (
+	ErrCannotDeleteSelf = errors.New(
+		"application/user: cannot delete yourself",
+	)
+
+	ErrCannotDeleteRoot = errors.New(
+		"application/user: cannot delete root user",
+	)
+)
+
+type DeleteUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type DeleteUserDeleter interface {
+	Delete(ctx context.Context, id domainuser.UserID) error
+}
+
+type DeleteUserReservationCanceller interface {
+	CancelAllByUserID(
+		ctx context.Context,
+		userID domainuser.UserID,
+	) error
+}
+
 type DeleteUser struct {
 	log          *slog.Logger
-	users        UserRepository
-	reservations ReservationRepository
+	users        DeleteUserFinder
+	deleter      DeleteUserDeleter
+	reservations DeleteUserReservationCanceller
 	transactor   Transactor
 }
 
 func NewDeleteUser(
 	log *slog.Logger,
-	users UserRepository,
-	reservations ReservationRepository,
+	users DeleteUserFinder,
+	deleter DeleteUserDeleter,
+	reservations DeleteUserReservationCanceller,
 	transactor Transactor,
 ) *DeleteUser {
 	return &DeleteUser{
 		log:          log,
 		users:        users,
+		deleter:      deleter,
 		reservations: reservations,
 		transactor:   transactor,
 	}
@@ -36,77 +68,105 @@ type DeleteUserInput struct {
 	ActorID      domainuser.UserID
 }
 
-func (d *DeleteUser) Execute(ctx context.Context, in DeleteUserInput) error {
-	d.log.DebugContext(ctx, "executing delete user",
+func (d *DeleteUser) Execute(
+	ctx context.Context,
+	in DeleteUserInput,
+) error {
+	d.log.DebugContext(
+		ctx,
+		"executing delete user",
 		slog.String("target_user_id", in.TargetUserID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
 
 	if in.TargetUserID == in.ActorID {
-		d.log.WarnContext(ctx, "actor attempted to delete themselves",
-			slog.String("actor_id", in.ActorID.String()),
-		)
 		return ErrCannotDeleteSelf
 	}
 
 	err := d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		actor, err := d.users.FindByID(ctx, in.ActorID)
+		actor, target, err := d.loadUsersForUpdate(
+			ctx,
+			in.ActorID,
+			in.TargetUserID,
+		)
 		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return ErrUserNotFound
-			}
-			return fmt.Errorf("find actor: %w", err)
+			return err
 		}
 
 		if !actor.IsAdmin() {
-			d.log.WarnContext(ctx, "non-admin attempted to delete user",
-				slog.String("actor_id", in.ActorID.String()),
-			)
 			return ErrNotAdmin
 		}
 
-		target, err := d.users.FindByID(ctx, in.TargetUserID)
-		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				d.log.WarnContext(ctx, "target user not found",
-					slog.String("target_user_id", in.TargetUserID.String()),
-				)
-				return ErrUserNotFound
-			}
-			return fmt.Errorf("find target user: %w", err)
+		if errCancel := d.reservations.CancelAllByUserID(ctx, target.ID()); errCancel != nil {
+			return fmt.Errorf("cancel reservations: %w", errCancel)
 		}
 
-		if cancelErr := d.reservations.CancelAllByUserID(ctx, target.ID()); cancelErr != nil {
-			d.log.ErrorContext(ctx, "failed to cancel reservations for user",
-				slog.String("user_id", target.ID().String()),
-				slog.Any("error", cancelErr),
-			)
-			return fmt.Errorf("cancel reservations: %w", cancelErr)
-		}
-
-		if delErr := d.users.Delete(ctx, target.ID()); delErr != nil {
-			d.log.ErrorContext(ctx, "failed to delete user",
-				slog.String("user_id", target.ID().String()),
-				slog.Any("error", delErr),
-			)
-			return fmt.Errorf("delete user: %w", delErr)
+		if errDelete := d.deleter.Delete(ctx, target.ID()); errDelete != nil {
+			return fmt.Errorf("delete user: %w", errDelete)
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		d.log.ErrorContext(ctx, "delete user transaction failed",
+		d.log.WarnContext(
+			ctx,
+			"delete user failed",
 			slog.String("target_user_id", in.TargetUserID.String()),
 			slog.Any("error", err),
 		)
+
 		return err
 	}
 
-	d.log.InfoContext(ctx, "user deleted with reservations cancelled",
+	d.log.InfoContext(
+		ctx,
+		"user deleted",
 		slog.String("target_user_id", in.TargetUserID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
 
 	return nil
+}
+
+func (d *DeleteUser) loadUsersForUpdate(
+	ctx context.Context,
+	actorID domainuser.UserID,
+	targetID domainuser.UserID,
+) (*domainuser.User, *domainuser.User, error) {
+	firstID, secondID := actorID, targetID
+
+	if bytes.Compare(firstID[:], secondID[:]) > 0 {
+		firstID, secondID = secondID, firstID
+	}
+
+	first, err := d.users.FindByIDForUpdate(ctx, firstID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil, ErrUserNotFound
+		}
+
+		return nil, nil, fmt.Errorf("find first user: %w", err)
+	}
+
+	second, err := d.users.FindByIDForUpdate(ctx, secondID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil, ErrUserNotFound
+		}
+
+		return nil, nil, fmt.Errorf("find second user: %w", err)
+	}
+
+	var actor, target *domainuser.User
+
+	if first.ID() == actorID {
+		actor = first
+		target = second
+	} else {
+		actor = second
+		target = first
+	}
+
+	return actor, target, nil
 }

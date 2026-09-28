@@ -1,33 +1,71 @@
 package booking
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/whicu/slotify/internal/domain"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+var (
+	ErrReservationNotFound = errors.New(
+		"application/booking: reservation not found",
+	)
+	ErrNotOwnerOrAdmin = errors.New(
+		"application/booking: only owner or admin can perform this action",
+	)
+	ErrCannotCancelEmpty = errors.New(
+		"application/booking: at least one reservation is required",
+	)
+)
+
+type CancelBookingUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type CancelBookingFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainbooking.ReservationID,
+	) (*domainbooking.Reservation, error)
+}
+
+type CancelBookingDeleter interface {
+	DeleteByIDs(
+		ctx context.Context,
+		ids []domainbooking.ReservationID,
+	) error
+}
+
 type CancelBooking struct {
 	log          *slog.Logger
-	reservations ReservationRepository
-	users        UserRepository
+	users        CancelBookingUserFinder
+	reservations CancelBookingFinder
+	deleter      CancelBookingDeleter
 	transactor   Transactor
 }
 
 func NewCancelBooking(
 	log *slog.Logger,
-	reservations ReservationRepository,
-	users UserRepository,
+	users CancelBookingUserFinder,
+	reservations CancelBookingFinder,
+	deleter CancelBookingDeleter,
 	transactor Transactor,
 ) *CancelBooking {
 	return &CancelBooking{
 		log:          log,
-		reservations: reservations,
 		users:        users,
+		reservations: reservations,
+		deleter:      deleter,
 		transactor:   transactor,
 	}
 }
@@ -37,62 +75,71 @@ type CancelBookingInput struct {
 	ActorID        domainuser.UserID
 }
 
-func (c *CancelBooking) Execute(ctx context.Context, in CancelBookingInput) error {
-	c.log.DebugContext(ctx, "executing cancel booking",
+func (c *CancelBooking) Execute(
+	ctx context.Context,
+	in CancelBookingInput,
+) error {
+	c.log.DebugContext(
+		ctx,
+		"executing cancel booking",
 		slog.String("actor_id", in.ActorID.String()),
 		slog.Int("reservation_count", len(in.ReservationIDs)),
 	)
 
 	if len(in.ReservationIDs) == 0 {
-		return ErrNoSlots
+		return ErrCannotCancelEmpty
 	}
 
+	ids := slices.Clone(in.ReservationIDs)
+	slices.SortFunc(ids, func(a, b domainbooking.ReservationID) int {
+		return bytes.Compare(a[:], b[:])
+	})
+
 	err := c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		actor, txErr := c.users.FindByID(ctx, in.ActorID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
+		actor, err := c.users.FindByIDForUpdate(ctx, in.ActorID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
 				return ErrNotOwnerOrAdmin
 			}
-			return fmt.Errorf("find actor: %w", txErr)
+
+			return fmt.Errorf("find actor: %w", err)
 		}
 
-		for _, rid := range in.ReservationIDs {
-			r, errFind := c.reservations.FindByID(ctx, rid)
+		for _, id := range ids {
+			r, errFind := c.reservations.FindByIDForUpdate(ctx, id)
 			if errFind != nil {
 				if errors.Is(errFind, domain.ErrNotFound) {
-					c.log.WarnContext(ctx, "reservation not found",
-						slog.String("reservation_id", rid.String()),
-					)
 					return ErrReservationNotFound
 				}
-				return fmt.Errorf("find reservation %s: %w", rid.String(), errFind)
+
+				return fmt.Errorf(
+					"find reservation %s: %w",
+					id.String(),
+					errFind,
+				)
 			}
 
-			if r.UserID() != in.ActorID && !actor.IsAdmin() {
-				c.log.WarnContext(ctx, "actor is not owner or admin",
-					slog.String("actor_id", in.ActorID.String()),
-					slog.String("reservation_owner", r.UserID().String()),
-				)
+			if !actor.IsAdmin() && r.UserID() != actor.ID() {
 				return ErrNotOwnerOrAdmin
 			}
 		}
 
-		if txErr = c.reservations.DeleteByIDs(ctx, in.ReservationIDs); txErr != nil {
-			c.log.ErrorContext(ctx, "failed to delete reservations", slog.Any("error", txErr))
-			return fmt.Errorf("delete reservations: %w", txErr)
+		if errDelete := c.deleter.DeleteByIDs(ctx, ids); errDelete != nil {
+			return fmt.Errorf("delete reservations: %w", errDelete)
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		c.log.ErrorContext(ctx, "cancel booking failed", slog.Any("error", err))
 		return err
 	}
 
-	c.log.InfoContext(ctx, "booking cancelled",
+	c.log.InfoContext(
+		ctx,
+		"booking cancelled",
 		slog.String("actor_id", in.ActorID.String()),
-		slog.Int("cancelled_count", len(in.ReservationIDs)),
+		slog.Int("cancelled_count", len(ids)),
 	)
 
 	return nil

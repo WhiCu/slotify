@@ -5,19 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 )
 
+type GetSpaceFinder interface {
+	FindByID(
+		ctx context.Context,
+		id domainspace.SpaceID,
+	) (*domainspace.Space, error)
+}
+
 type GetSpace struct {
 	log    *slog.Logger
-	spaces SpaceRepository
+	spaces GetSpaceFinder
 }
 
 func NewGetSpace(
 	log *slog.Logger,
-	spaces SpaceRepository,
+	spaces GetSpaceFinder,
 ) *GetSpace {
 	return &GetSpace{
 		log:    log,
@@ -31,22 +39,25 @@ type GetSpaceOutput struct {
 	Type      string
 	Capacity  int
 	Active    bool
-	CreatedAt string
+	CreatedAt time.Time
 }
 
-func (g *GetSpace) Execute(ctx context.Context, id domainspace.SpaceID) (*GetSpaceOutput, error) {
-	g.log.DebugContext(ctx, "executing get space", slog.String("space_id", id.String()))
+func (g *GetSpace) Execute(
+	ctx context.Context,
+	id domainspace.SpaceID,
+) (*GetSpaceOutput, error) {
+	g.log.DebugContext(
+		ctx,
+		"executing get space",
+		slog.String("space_id", id.String()),
+	)
 
 	s, err := g.spaces.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			g.log.WarnContext(ctx, "space not found", slog.String("space_id", id.String()))
 			return nil, ErrSpaceNotFound
 		}
-		g.log.ErrorContext(ctx, "failed to find space",
-			slog.String("space_id", id.String()),
-			slog.Any("error", err),
-		)
+
 		return nil, fmt.Errorf("find space: %w", err)
 	}
 
@@ -56,6 +67,6 @@ func (g *GetSpace) Execute(ctx context.Context, id domainspace.SpaceID) (*GetSpa
 		Type:      s.Type().String(),
 		Capacity:  s.Capacity(),
 		Active:    s.IsActive(),
-		CreatedAt: s.CreatedAt().Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt: s.CreatedAt(),
 	}, nil
 }

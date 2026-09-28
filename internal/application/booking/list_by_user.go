@@ -8,17 +8,25 @@ import (
 	"time"
 
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
+	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+type ListByUserFinder interface {
+	ListByUserID(
+		ctx context.Context,
+		userID domainuser.UserID,
+	) ([]*domainbooking.Reservation, error)
+}
+
 type ListByUser struct {
 	log          *slog.Logger
-	reservations ReservationRepository
+	reservations ListByUserFinder
 }
 
 func NewListByUser(
 	log *slog.Logger,
-	reservations ReservationRepository,
+	reservations ListByUserFinder,
 ) *ListByUser {
 	return &ListByUser{
 		log:          log,
@@ -27,10 +35,10 @@ func NewListByUser(
 }
 
 type BookingGroup struct {
-	SpaceID   string
-	Date      string
-	StartSlot int
-	EndSlot   int
+	SpaceID   domainspace.SpaceID
+	Date      domainbooking.Date
+	StartSlot domainbooking.Slot
+	EndSlot   domainbooking.Slot
 	IDs       []domainbooking.ReservationID
 }
 
@@ -38,92 +46,135 @@ type ListByUserOutput struct {
 	Bookings []BookingGroup
 }
 
-func (l *ListByUser) Execute(ctx context.Context, userID domainuser.UserID) (*ListByUserOutput, error) {
-	l.log.DebugContext(ctx, "executing list bookings by user", slog.String("user_id", userID.String()))
+func (l *ListByUser) Execute(
+	ctx context.Context,
+	userID domainuser.UserID,
+) (*ListByUserOutput, error) {
+	l.log.DebugContext(
+		ctx,
+		"executing list bookings by user",
+		slog.String("user_id", userID.String()),
+	)
 
 	all, err := l.reservations.ListByUserID(ctx, userID)
 	if err != nil {
-		l.log.ErrorContext(ctx, "failed to list reservations by user", slog.Any("error", err))
 		return nil, fmt.Errorf("list reservations: %w", err)
 	}
 
 	groups := aggregateReservations(all)
 
-	l.log.InfoContext(ctx, "bookings listed by user",
+	l.log.InfoContext(
+		ctx,
+		"bookings listed by user",
 		slog.String("user_id", userID.String()),
 		slog.Int("groups", len(groups)),
 		slog.Int("total_slots", len(all)),
 	)
 
-	return &ListByUserOutput{Bookings: groups}, nil
+	return &ListByUserOutput{
+		Bookings: groups,
+	}, nil
 }
 
-func aggregateReservations(reservations []*domainbooking.Reservation) []BookingGroup {
+func aggregateReservations(
+	reservations []*domainbooking.Reservation,
+) []BookingGroup {
 	type groupKey struct {
-		spaceID string
-		date    string
+		spaceID domainspace.SpaceID
+		date    domainbooking.Date
 	}
 
 	grouped := make(map[groupKey][]*domainbooking.Reservation)
+
 	for _, r := range reservations {
 		key := groupKey{
-			spaceID: r.SpaceID().String(),
-			date:    r.Date().Format(time.DateOnly),
+			spaceID: r.SpaceID(),
+			date:    r.Date(),
 		}
+
 		grouped[key] = append(grouped[key], r)
 	}
 
 	groups := make([]BookingGroup, 0, len(grouped))
-	for key, rr := range grouped {
-		sort.Slice(rr, func(i, j int) bool {
-			return rr[i].Slot().Int() < rr[j].Slot().Int()
-		})
 
-		ranges := splitIntoContiguousRanges(rr)
-		for _, rng := range ranges {
-			ids := make([]domainbooking.ReservationID, 0, len(rng))
+	for key, reservations := range grouped {
+		sort.Slice(
+			reservations,
+			func(i, j int) bool {
+				return reservations[i].Slot() < reservations[j].Slot()
+			},
+		)
+
+		for _, rng := range splitIntoContiguousRanges(reservations) {
+			ids := make(
+				[]domainbooking.ReservationID,
+				0,
+				len(rng),
+			)
+
 			for _, r := range rng {
 				ids = append(ids, r.ID())
 			}
+
 			groups = append(groups, BookingGroup{
 				SpaceID:   key.spaceID,
 				Date:      key.date,
-				StartSlot: rng[0].Slot().Int(),
-				EndSlot:   rng[len(rng)-1].Slot().Int(),
+				StartSlot: rng[0].Slot(),
+				EndSlot:   rng[len(rng)-1].Slot(),
 				IDs:       ids,
 			})
 		}
 	}
 
-	sort.Slice(groups, func(i, j int) bool {
-		if groups[i].Date != groups[j].Date {
-			return groups[i].Date < groups[j].Date
-		}
-		if groups[i].SpaceID != groups[j].SpaceID {
-			return groups[i].SpaceID < groups[j].SpaceID
-		}
-		return groups[i].StartSlot < groups[j].StartSlot
-	})
+	sort.Slice(
+		groups,
+		func(i, j int) bool {
+			di := groups[i].Date.Format(time.DateOnly)
+			dj := groups[j].Date.Format(time.DateOnly)
+
+			if di != dj {
+				return di < dj
+			}
+
+			if groups[i].SpaceID != groups[j].SpaceID {
+				return groups[i].SpaceID.String() < groups[j].SpaceID.String()
+			}
+
+			return groups[i].StartSlot < groups[j].StartSlot
+		},
+	)
 
 	return groups
 }
 
-func splitIntoContiguousRanges(sorted []*domainbooking.Reservation) [][]*domainbooking.Reservation {
+func splitIntoContiguousRanges(
+	sorted []*domainbooking.Reservation,
+) [][]*domainbooking.Reservation {
 	if len(sorted) == 0 {
 		return nil
 	}
 
-	var ranges [][]*domainbooking.Reservation
-	current := []*domainbooking.Reservation{sorted[0]}
+	ranges := make([][]*domainbooking.Reservation, 0)
+
+	current := []*domainbooking.Reservation{
+		sorted[0],
+	}
 
 	for i := 1; i < len(sorted); i++ {
-		if sorted[i].Slot().Int() == sorted[i-1].Slot().Int()+1 {
+		prev := sorted[i-1].Slot()
+		curr := sorted[i].Slot()
+
+		if curr == prev+1 {
 			current = append(current, sorted[i])
-		} else {
-			ranges = append(ranges, current)
-			current = []*domainbooking.Reservation{sorted[i]}
+			continue
+		}
+
+		ranges = append(ranges, current)
+		current = []*domainbooking.Reservation{
+			sorted[i],
 		}
 	}
+
 	ranges = append(ranges, current)
 
 	return ranges

@@ -7,32 +7,94 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/whicu/slotify/internal/domain"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+var (
+	ErrSpaceNotFound    = errors.New("application/booking: space not found")
+	ErrSpaceNotActive   = errors.New("application/booking: space is not active")
+	ErrCapacityExceeded = errors.New("application/booking: space cannot host requested number of people")
+	ErrSlotsConflict    = errors.New("application/booking: one or more slots are already booked")
+	ErrUserNotFound     = errors.New("application/booking: user not found")
+	ErrNoSlots          = errors.New("application/booking: at least one slot is required")
+)
+
+type IDGenerator interface {
+	NewID() uuid.UUID
+}
+
+type Transactor interface {
+	RunInTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
+type Clock interface {
+	Now() time.Time
+}
+
+type CreateBookingUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type CreateBookingSpaceFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainspace.SpaceID,
+	) (*domainspace.Space, error)
+}
+
+type CreateBookingConflictChecker interface {
+	HasConflict(
+		ctx context.Context,
+		spaceID domainspace.SpaceID,
+		date domainbooking.Date,
+		slots []domainbooking.Slot,
+	) (bool, error)
+}
+
+type CreateBookingSaver interface {
+	SaveAll(
+		ctx context.Context,
+		reservations []*domainbooking.Reservation,
+	) error
+}
+
 type CreateBooking struct {
 	log          *slog.Logger
 	ids          IDGenerator
-	reservations ReservationRepository
-	spaces       SpaceRepository
+	clock        Clock
+	users        CreateBookingUserFinder
+	spaces       CreateBookingSpaceFinder
+	reservations CreateBookingConflictChecker
+	saver        CreateBookingSaver
 	transactor   Transactor
 }
 
 func NewCreateBooking(
 	log *slog.Logger,
 	ids IDGenerator,
-	reservations ReservationRepository,
-	spaces SpaceRepository,
+	clock Clock,
+	users CreateBookingUserFinder,
+	spaces CreateBookingSpaceFinder,
+	reservations CreateBookingConflictChecker,
+	saver CreateBookingSaver,
 	transactor Transactor,
 ) *CreateBooking {
 	return &CreateBooking{
 		log:          log,
 		ids:          ids,
-		reservations: reservations,
+		clock:        clock,
+		users:        users,
 		spaces:       spaces,
+		reservations: reservations,
+		saver:        saver,
 		transactor:   transactor,
 	}
 }
@@ -40,7 +102,7 @@ func NewCreateBooking(
 type CreateBookingInput struct {
 	SpaceID   domainspace.SpaceID
 	UserID    domainuser.UserID
-	Date      time.Time
+	Date      domainbooking.Date
 	StartSlot int
 	EndSlot   int
 	People    int
@@ -49,13 +111,18 @@ type CreateBookingInput struct {
 type CreateBookingOutput struct {
 	ReservationIDs []domainbooking.ReservationID
 	SpaceID        domainspace.SpaceID
-	Date           time.Time
+	Date           domainbooking.Date
 	StartSlot      int
 	EndSlot        int
 }
 
-func (c *CreateBooking) Execute(ctx context.Context, in CreateBookingInput) (*CreateBookingOutput, error) {
-	c.log.DebugContext(ctx, "executing create booking",
+func (c *CreateBooking) Execute(
+	ctx context.Context,
+	in CreateBookingInput,
+) (*CreateBookingOutput, error) {
+	c.log.DebugContext(
+		ctx,
+		"executing create booking",
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("user_id", in.UserID.String()),
 		slog.Int("start_slot", in.StartSlot),
@@ -63,12 +130,17 @@ func (c *CreateBooking) Execute(ctx context.Context, in CreateBookingInput) (*Cr
 	)
 
 	if in.StartSlot > in.EndSlot {
-		return nil, domain.ErrInvalidArgument(fmt.Errorf("start_slot (%d) must be <= end_slot (%d)", in.StartSlot, in.EndSlot))
+		return nil, domain.ErrInvalidArgument(
+			fmt.Errorf("start_slot (%d) must be <= end_slot (%d)", in.StartSlot, in.EndSlot),
+		)
+	}
+
+	if in.People < 0 {
+		return nil, domain.ErrInvalidArgument(errors.New("people must be non-negative"))
 	}
 
 	slots, err := buildSlotRange(in.StartSlot, in.EndSlot)
 	if err != nil {
-		c.log.WarnContext(ctx, "invalid slot range", slog.Any("error", err))
 		return nil, err
 	}
 
@@ -78,35 +150,19 @@ func (c *CreateBooking) Execute(ctx context.Context, in CreateBookingInput) (*Cr
 
 	var reservationIDs []domainbooking.ReservationID
 
-	err = c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		if txErr := c.validateSpace(ctx, in.SpaceID, in.People); txErr != nil {
-			return txErr
-		}
-
-		conflict, txErr := c.reservations.HasConflict(ctx, in.SpaceID, in.Date, slots)
-		if txErr != nil {
-			c.log.ErrorContext(ctx, "failed to check slot conflicts", slog.Any("error", txErr))
-			return fmt.Errorf("check conflicts: %w", txErr)
-		}
-		if conflict {
-			c.log.WarnContext(ctx, "slot conflict detected",
-				slog.String("space_id", in.SpaceID.String()),
-				slog.Int("start_slot", in.StartSlot),
-				slog.Int("end_slot", in.EndSlot),
-			)
-			return ErrSlotsConflict
-		}
-
-		reservationIDs, txErr = c.createAndSaveReservations(ctx, in, slots)
+	err = c.transactor.RunInTransaction(ctx, func(txCtx context.Context) error {
+		var txErr error
+		reservationIDs, txErr = c.executeInTx(txCtx, in, slots)
 		return txErr
 	})
 
 	if err != nil {
-		c.log.ErrorContext(ctx, "create booking failed", slog.Any("error", err))
 		return nil, err
 	}
 
-	c.log.InfoContext(ctx, "booking created",
+	c.log.InfoContext(
+		ctx,
+		"booking created",
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("user_id", in.UserID.String()),
 		slog.Int("slots_count", len(slots)),
@@ -121,55 +177,55 @@ func (c *CreateBooking) Execute(ctx context.Context, in CreateBookingInput) (*Cr
 	}, nil
 }
 
-func (c *CreateBooking) validateSpace(ctx context.Context, spaceID domainspace.SpaceID, people int) error {
-	s, err := c.spaces.FindByID(ctx, spaceID)
+func (c *CreateBooking) executeInTx(
+	ctx context.Context,
+	in CreateBookingInput,
+	slots []domainbooking.Slot,
+) ([]domainbooking.ReservationID, error) {
+	if _, err := c.users.FindByIDForUpdate(ctx, in.UserID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("find user: %w", err)
+	}
+
+	s, err := c.spaces.FindByIDForUpdate(ctx, in.SpaceID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			c.log.WarnContext(ctx, "space not found", slog.String("space_id", spaceID.String()))
-			return ErrSpaceNotFound
+			return nil, ErrSpaceNotFound
 		}
-		return fmt.Errorf("find space: %w", err)
+		return nil, fmt.Errorf("find space: %w", err)
 	}
 
 	if !s.IsActive() {
-		c.log.WarnContext(ctx, "space is not active", slog.String("space_id", spaceID.String()))
-		return ErrSpaceNotActive
+		return nil, ErrSpaceNotActive
 	}
 
-	p := people
-	if p == 0 {
-		p = 1
-	}
-	if !s.CanHost(p) {
-		c.log.WarnContext(ctx, "space cannot host requested people",
-			slog.String("space_id", spaceID.String()),
-			slog.Int("people", p),
-			slog.Int("capacity", s.Capacity()),
-		)
-		return ErrCapacityExceeded
+	people := in.People
+	if people == 0 {
+		people = 1
 	}
 
-	return nil
-}
+	if !s.CanHost(people) {
+		return nil, ErrCapacityExceeded
+	}
 
-func (c *CreateBooking) createAndSaveReservations(ctx context.Context, in CreateBookingInput, slots []domainbooking.Slot) ([]domainbooking.ReservationID, error) {
-	now := time.Now()
-	reservations, err := domainbooking.NewReservations(
-		in.SpaceID,
-		in.UserID,
-		in.Date,
-		slots,
-		func() domainbooking.ReservationID { return c.ids.NewID() },
-		now,
-	)
+	conflict, err := c.reservations.HasConflict(ctx, in.SpaceID, in.Date, slots)
 	if err != nil {
-		c.log.ErrorContext(ctx, "failed to create reservation entities", slog.Any("error", err))
+		return nil, fmt.Errorf("check conflicts: %w", err)
+	}
+
+	if conflict {
+		return nil, ErrSlotsConflict
+	}
+
+	reservations, err := c.createReservations(in, slots)
+	if err != nil {
 		return nil, err
 	}
 
-	if err = c.reservations.SaveAll(ctx, reservations); err != nil {
-		c.log.ErrorContext(ctx, "failed to save reservations", slog.Any("error", err))
-		return nil, fmt.Errorf("save reservations: %w", err)
+	if errSaveAll := c.saver.SaveAll(ctx, reservations); errSaveAll != nil {
+		return nil, fmt.Errorf("save reservations: %w", errSaveAll)
 	}
 
 	ids := make([]domainbooking.ReservationID, 0, len(reservations))
@@ -180,14 +236,44 @@ func (c *CreateBooking) createAndSaveReservations(ctx context.Context, in Create
 	return ids, nil
 }
 
-func buildSlotRange(start, end int) ([]domainbooking.Slot, error) {
-	slots := make([]domainbooking.Slot, 0, end-start+1)
-	for i := start; i <= end; i++ {
-		s, err := domainbooking.NewSlot(i)
-		if err != nil {
-			return nil, domain.ErrInvalidArgument(err)
-		}
-		slots = append(slots, s)
+func (c *CreateBooking) createReservations(
+	in CreateBookingInput,
+	slots []domainbooking.Slot,
+) ([]*domainbooking.Reservation, error) {
+	reservations, err := domainbooking.NewReservations(
+		in.SpaceID,
+		in.UserID,
+		in.Date,
+		slots,
+		func() domainbooking.ReservationID {
+			return c.ids.NewID()
+		},
+		c.clock.Now(),
+	)
+	if err != nil {
+		return nil, err
 	}
+
+	return reservations, nil
+}
+
+func buildSlotRange(
+	start int,
+	end int,
+) ([]domainbooking.Slot, error) {
+	if _, err := domainbooking.NewSlot(start); err != nil {
+		return nil, domain.ErrInvalidArgument(err)
+	}
+
+	if _, err := domainbooking.NewSlot(end); err != nil {
+		return nil, domain.ErrInvalidArgument(err)
+	}
+
+	slots := make([]domainbooking.Slot, 0, end-start+1)
+
+	for n := start; n <= end; n++ {
+		slots = append(slots, domainbooking.Slot(n))
+	}
+
 	return slots, nil
 }

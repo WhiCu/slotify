@@ -22,42 +22,48 @@ type IDGenerator interface {
 	NewID() domainspace.SpaceID
 }
 
-type SpaceRepository interface {
-	Save(ctx context.Context, s *domainspace.Space) error
-	FindByID(ctx context.Context, id domainspace.SpaceID) (*domainspace.Space, error)
-	ListAll(ctx context.Context) ([]*domainspace.Space, error)
-	ListActive(ctx context.Context) ([]*domainspace.Space, error)
-	Delete(ctx context.Context, id domainspace.SpaceID) error
-}
-
-type UserRepository interface {
-	FindByID(ctx context.Context, id domainuser.UserID) (*domainuser.User, error)
+type Clock interface {
+	Now() time.Time
 }
 
 type Transactor interface {
-	RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+	RunInTransaction(ctx context.Context, fn func(context.Context) error) error
+}
+
+type CreateSpaceUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type CreateSpaceSaver interface {
+	Save(ctx context.Context, s *domainspace.Space) error
 }
 
 type CreateSpace struct {
 	log        *slog.Logger
 	ids        IDGenerator
-	spaces     SpaceRepository
-	users      UserRepository
+	clock      Clock
+	users      CreateSpaceUserFinder
+	spaces     CreateSpaceSaver
 	transactor Transactor
 }
 
 func NewCreateSpace(
 	log *slog.Logger,
 	ids IDGenerator,
-	spaces SpaceRepository,
-	users UserRepository,
+	clock Clock,
+	users CreateSpaceUserFinder,
+	spaces CreateSpaceSaver,
 	transactor Transactor,
 ) *CreateSpace {
 	return &CreateSpace{
 		log:        log,
 		ids:        ids,
-		spaces:     spaces,
+		clock:      clock,
 		users:      users,
+		spaces:     spaces,
 		transactor: transactor,
 	}
 }
@@ -76,73 +82,73 @@ type CreateSpaceOutput struct {
 	Capacity int
 }
 
-func (c *CreateSpace) Execute(ctx context.Context, in CreateSpaceInput) (*CreateSpaceOutput, error) {
-	c.log.DebugContext(ctx, "executing create space",
+func (c *CreateSpace) Execute(
+	ctx context.Context,
+	in CreateSpaceInput,
+) (*CreateSpaceOutput, error) {
+	c.log.DebugContext(
+		ctx,
+		"executing create space",
 		slog.String("name", in.Name),
 		slog.String("actor_id", in.ActorID.String()),
 	)
 
 	spaceType, err := domainspace.TypeFromString(in.Type)
 	if err != nil {
-		c.log.WarnContext(ctx, "invalid space type",
-			slog.String("type", in.Type),
-			slog.Any("error", err),
-		)
 		return nil, domain.ErrInvalidArgument(err)
 	}
 
-	var id domainspace.SpaceID
+	var out CreateSpaceOutput
 
 	err = c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		actor, txErr := c.users.FindByID(ctx, in.ActorID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
+		actor, errFind := c.users.FindByIDForUpdate(ctx, in.ActorID)
+		if errFind != nil {
+			if errors.Is(errFind, domain.ErrNotFound) {
 				return ErrUserNotFound
 			}
-			return fmt.Errorf("find actor: %w", txErr)
+
+			return fmt.Errorf("find actor: %w", errFind)
 		}
 
 		if !actor.IsAdmin() {
-			c.log.WarnContext(ctx, "non-admin attempted to create space",
-				slog.String("actor_id", in.ActorID.String()),
-			)
 			return ErrNotAdmin
 		}
 
-		id = c.ids.NewID()
-		now := time.Now()
-
-		s, createErr := domainspace.New(id, in.Name, spaceType, in.Capacity, now)
-		if createErr != nil {
-			c.log.ErrorContext(ctx, "failed to create space domain entity", slog.Any("error", createErr))
-			return createErr
+		s, errNewSpace := domainspace.New(
+			c.ids.NewID(),
+			in.Name,
+			spaceType,
+			in.Capacity,
+			c.clock.Now(),
+		)
+		if errNewSpace != nil {
+			return errNewSpace
 		}
 
-		if saveErr := c.spaces.Save(ctx, s); saveErr != nil {
-			c.log.ErrorContext(ctx, "failed to save space",
-				slog.String("space_id", s.ID().String()),
-				slog.Any("error", saveErr),
-			)
-			return fmt.Errorf("save space: %w", saveErr)
+		if errSave := c.spaces.Save(ctx, s); errSave != nil {
+			return fmt.Errorf("save space: %w", errSave)
+		}
+
+		out = CreateSpaceOutput{
+			ID:       s.ID(),
+			Name:     s.Name(),
+			Type:     s.Type().String(),
+			Capacity: s.Capacity(),
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		c.log.ErrorContext(ctx, "create space failed", slog.Any("error", err))
 		return nil, err
 	}
 
-	c.log.InfoContext(ctx, "space created",
-		slog.String("space_id", id.String()),
-		slog.String("name", in.Name),
+	c.log.InfoContext(
+		ctx,
+		"space created",
+		slog.String("space_id", out.ID.String()),
+		slog.String("actor_id", in.ActorID.String()),
 	)
 
-	return &CreateSpaceOutput{
-		ID:       id,
-		Name:     in.Name,
-		Type:     in.Type,
-		Capacity: in.Capacity,
-	}, nil
+	return &out, nil
 }

@@ -11,23 +11,44 @@ import (
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
 
+type DeleteSpaceUserFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainuser.UserID,
+	) (*domainuser.User, error)
+}
+
+type DeleteSpaceFinder interface {
+	FindByIDForUpdate(
+		ctx context.Context,
+		id domainspace.SpaceID,
+	) (*domainspace.Space, error)
+}
+
+type DeleteSpaceDeleter interface {
+	Delete(ctx context.Context, id domainspace.SpaceID) error
+}
+
 type DeleteSpace struct {
 	log        *slog.Logger
-	spaces     SpaceRepository
-	users      UserRepository
+	users      DeleteSpaceUserFinder
+	spaces     DeleteSpaceFinder
+	deleter    DeleteSpaceDeleter
 	transactor Transactor
 }
 
 func NewDeleteSpace(
 	log *slog.Logger,
-	spaces SpaceRepository,
-	users UserRepository,
+	users DeleteSpaceUserFinder,
+	spaces DeleteSpaceFinder,
+	deleter DeleteSpaceDeleter,
 	transactor Transactor,
 ) *DeleteSpace {
 	return &DeleteSpace{
 		log:        log,
-		spaces:     spaces,
 		users:      users,
+		spaces:     spaces,
+		deleter:    deleter,
 		transactor: transactor,
 	}
 }
@@ -37,54 +58,53 @@ type DeleteSpaceInput struct {
 	ActorID domainuser.UserID
 }
 
-func (d *DeleteSpace) Execute(ctx context.Context, in DeleteSpaceInput) error {
-	d.log.DebugContext(ctx, "executing delete space",
+func (d *DeleteSpace) Execute(
+	ctx context.Context,
+	in DeleteSpaceInput,
+) error {
+	d.log.DebugContext(
+		ctx,
+		"executing delete space",
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
 
 	err := d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
-		actor, txErr := d.users.FindByID(ctx, in.ActorID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
+		actor, err := d.users.FindByIDForUpdate(ctx, in.ActorID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
 				return ErrUserNotFound
 			}
-			return fmt.Errorf("find actor: %w", txErr)
+
+			return fmt.Errorf("find actor: %w", err)
 		}
 
 		if !actor.IsAdmin() {
-			d.log.WarnContext(ctx, "non-admin attempted to delete space",
-				slog.String("actor_id", in.ActorID.String()),
-			)
 			return ErrNotAdmin
 		}
 
-		_, txErr = d.spaces.FindByID(ctx, in.SpaceID)
-		if txErr != nil {
-			if errors.Is(txErr, domain.ErrNotFound) {
-				d.log.WarnContext(ctx, "space not found", slog.String("space_id", in.SpaceID.String()))
+		if _, errFind := d.spaces.FindByIDForUpdate(ctx, in.SpaceID); errFind != nil {
+			if errors.Is(errFind, domain.ErrNotFound) {
 				return ErrSpaceNotFound
 			}
-			return fmt.Errorf("find space: %w", txErr)
+
+			return fmt.Errorf("find space: %w", errFind)
 		}
 
-		if txErr = d.spaces.Delete(ctx, in.SpaceID); txErr != nil {
-			d.log.ErrorContext(ctx, "failed to delete space",
-				slog.String("space_id", in.SpaceID.String()),
-				slog.Any("error", txErr),
-			)
-			return fmt.Errorf("delete space: %w", txErr)
+		if errDelete := d.deleter.Delete(ctx, in.SpaceID); errDelete != nil {
+			return fmt.Errorf("delete space: %w", errDelete)
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		d.log.ErrorContext(ctx, "delete space failed", slog.Any("error", err))
 		return err
 	}
 
-	d.log.InfoContext(ctx, "space deleted",
+	d.log.InfoContext(
+		ctx,
+		"space deleted",
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
