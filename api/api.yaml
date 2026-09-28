@@ -1,8 +1,621 @@
 openapi: 3.0.3
 info:
   title: Slotify API
-  description: 
-  version: "0.1.0"
+  description:
+  version: "1.0.0"
 
 servers:
-  - url: http://localhost:8081
+  - url: http://localhost:8080/api/v1
+
+tags:
+  - name: Users
+  - name: Spaces
+  - name: Bookings
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: PASETO
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    Role:
+      type: string
+      enum: [member, admin]
+
+    SpaceType:
+      type: string
+      enum: [meeting_room, desk]
+
+    Slot:
+      type: integer
+      minimum: 0
+      maximum: 287
+
+    User:
+      type: object
+      required: [id, role, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/Role'
+        created_at:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    UpdateRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    Space:
+      type: object
+      required: [id, name, type, capacity, active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/SpaceType'
+        capacity:
+          type: integer
+          minimum: 1
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateSpaceRequest:
+      type: object
+      required: [name, type, capacity]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        type:
+          $ref: '#/components/schemas/SpaceType'
+        capacity:
+          type: integer
+          minimum: 1
+
+    UpdateSpaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        capacity:
+          type: integer
+          minimum: 1
+
+    CreateBookingRequest:
+      type: object
+      required: [space_id, date, start_slot, end_slot]
+      properties:
+        space_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: Дата в формате YYYY-MM-DD (UTC)
+        start_slot:
+          $ref: '#/components/schemas/Slot'
+        end_slot:
+          $ref: '#/components/schemas/Slot'
+        people:
+          type: integer
+          minimum: 1
+          default: 1
+
+    Booking:
+      type: object
+      required: [space_id, date, start_slot, end_slot, reservation_ids]
+      properties:
+        space_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        start_slot:
+          $ref: '#/components/schemas/Slot'
+        end_slot:
+          $ref: '#/components/schemas/Slot'
+        reservation_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Reservation:
+      type: object
+      required: [id, space_id, user_id, date, slot, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        space_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        slot:
+          $ref: '#/components/schemas/Slot'
+        created_at:
+          type: string
+          format: date-time
+
+    CancelBookingRequest:
+      type: object
+      required: [reservation_ids]
+      properties:
+        reservation_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+
+    SlotOccupancy:
+      type: object
+      required: [slot, user_id]
+      properties:
+        slot:
+          $ref: '#/components/schemas/Slot'
+        user_id:
+          type: string
+          format: uuid
+
+    Occupancy:
+      type: object
+      required: [space_id, date, occupied]
+      properties:
+        space_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        occupied:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotOccupancy'
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Конфликт (слоты заняты, у пользователя есть брони и т.п.)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unprocessable:
+      description: Бизнес-правило нарушено (например, превышена вместимость)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Проверка живости
+      security: []
+      responses:
+        '200':
+          description: OK
+
+  # ─────────────── Users ───────────────
+  /users:
+    post:
+      operationId: createUser
+      tags: [Users]
+      summary: Создать пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: Создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      operationId: listUsers
+      tags: [Users]
+      summary: Список пользователей (admin)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getUser
+      tags: [Users]
+      summary: Получить пользователя
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteUser
+      tags: [Users]
+      summary: Удалить пользователя (admin)
+      security: [{ BearerAuth: [admin] }]
+      responses:
+        '204':
+          description: Удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /users/{id}/role:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      operationId: updateUserRole
+      tags: [Users]
+      summary: Сменить роль (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────── Spaces ───────────────
+  /spaces:
+    post:
+      operationId: createSpace
+      tags: [Spaces]
+      summary: Создать пространство (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSpaceRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Space'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      operationId: listSpaces
+      tags: [Spaces]
+      summary: Список пространств
+      parameters:
+        - name: only_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Space'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /spaces/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getSpace
+      tags: [Spaces]
+      summary: Получить пространство
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Space'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateSpace
+      tags: [Spaces]
+      summary: Изменить имя / вместимость (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSpaceRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Space'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteSpace
+      tags: [Spaces]
+      summary: Удалить пространство (admin)
+      responses:
+        '204':
+          description: Удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /spaces/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      operationId: deactivateSpace
+      tags: [Spaces]
+      summary: Деактивировать пространство (admin)
+      responses:
+        '204':
+          description: Деактивировано
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # ─────────────── Bookings ───────────────
+  /bookings:
+    post:
+      operationId: createBooking
+      tags: [Bookings]
+      summary: Забронировать диапазон слотов
+      description: Пользователь берётся из токена, а не из тела запроса.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+
+  /bookings/cancel:
+    post:
+      operationId: cancelBooking
+      tags: [Bookings]
+      summary: Отменить бронь (владелец или admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+      responses:
+        '204':
+          description: Отменено
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/my:
+    get:
+      operationId: listMyBookings
+      tags: [Bookings]
+      summary: Мои брони (слоты сгруппированы в диапазоны)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/occupancy:
+    get:
+      operationId: getOccupancy
+      tags: [Bookings]
+      summary: Занятые слоты пространства за день
+      parameters:
+        - name: space_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Occupancy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      operationId: getReservation
+      tags: [Bookings]
+      summary: Получить один слот-бронь по ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
