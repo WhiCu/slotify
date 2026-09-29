@@ -409,7 +409,7 @@ func (s *Server) handleCreateBookingRequest(args [0]string, argsEscaped bool, w 
 
 // handleCreateSpaceRequest handles createSpace operation.
 //
-// Создать пространство (admin).
+// Создать пространство.
 //
 // POST /spaces
 func (s *Server) handleCreateSpaceRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -550,7 +550,7 @@ func (s *Server) handleCreateSpaceRequest(args [0]string, argsEscaped bool, w ht
 		mreq := middleware.Request{
 			Context:          ctx,
 			OperationName:    CreateSpaceOperation,
-			OperationSummary: "Создать пространство (admin)",
+			OperationSummary: "Создать пространство",
 			OperationID:      "createSpace",
 			Body:             request,
 			RawBody:          rawBody,
@@ -670,50 +670,6 @@ func (s *Server) handleCreateUserRequest(args [0]string, argsEscaped bool, w htt
 			ID:   "createUser",
 		}
 	)
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			sctx, ok, err := s.securityBearerAuth(ctx, CreateUserOperation, r)
-			if err != nil {
-				err = &ogenerrors.SecurityError{
-					OperationContext: opErrContext,
-					Security:         "BearerAuth",
-					Err:              err,
-				}
-				defer recordError("Security:BearerAuth", err)
-				s.cfg.ErrorHandler(ctx, w, r, err)
-				return
-			}
-			if ok {
-				satisfied[0] |= 1 << 0
-				ctx = sctx
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			err = &ogenerrors.SecurityError{
-				OperationContext: opErrContext,
-				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
-			}
-			defer recordError("Security", err)
-			s.cfg.ErrorHandler(ctx, w, r, err)
-			return
-		}
-	}
 
 	var rawBody []byte
 	request, rawBody, close, err := s.decodeCreateUserRequest(r)
@@ -1983,50 +1939,6 @@ func (s *Server) handleGetUserRequest(args [1]string, argsEscaped bool, w http.R
 			ID:   "getUser",
 		}
 	)
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			sctx, ok, err := s.securityBearerAuth(ctx, GetUserOperation, r)
-			if err != nil {
-				err = &ogenerrors.SecurityError{
-					OperationContext: opErrContext,
-					Security:         "BearerAuth",
-					Err:              err,
-				}
-				defer recordError("Security:BearerAuth", err)
-				s.cfg.ErrorHandler(ctx, w, r, err)
-				return
-			}
-			if ok {
-				satisfied[0] |= 1 << 0
-				ctx = sctx
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			err = &ogenerrors.SecurityError{
-				OperationContext: opErrContext,
-				Err:              ogenerrors.ErrSecurityRequirementIsNotSatisfied,
-			}
-			defer recordError("Security", err)
-			s.cfg.ErrorHandler(ctx, w, r, err)
-			return
-		}
-	}
 	params, err := decodeGetUserParams(args, argsEscaped, r)
 	if err != nil {
 		err = &ogenerrors.DecodeParamsError{
@@ -2096,7 +2008,7 @@ func (s *Server) handleGetUserRequest(args [1]string, argsEscaped bool, w http.R
 
 // handleHealthCheckRequest handles healthCheck operation.
 //
-// Проверка живости.
+// Проверка работоспособности сервиса.
 //
 // GET /healthz
 func (s *Server) handleHealthCheckRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
@@ -2174,7 +2086,7 @@ func (s *Server) handleHealthCheckRequest(args [0]string, argsEscaped bool, w ht
 		mreq := middleware.Request{
 			Context:          ctx,
 			OperationName:    HealthCheckOperation,
-			OperationSummary: "Проверка живости",
+			OperationSummary: "Проверка работоспособности сервиса",
 			OperationID:      "healthCheck",
 			Body:             nil,
 			RawBody:          rawBody,

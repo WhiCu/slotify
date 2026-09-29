@@ -43,7 +43,7 @@ type Invoker interface {
 	CreateBooking(ctx context.Context, request *CreateBookingRequest) (CreateBookingRes, error)
 	// CreateSpace invokes createSpace operation.
 	//
-	// Создать пространство (admin).
+	// Создать пространство.
 	//
 	// POST /spaces
 	CreateSpace(ctx context.Context, request *CreateSpaceRequest) (CreateSpaceRes, error)
@@ -97,7 +97,7 @@ type Invoker interface {
 	GetUser(ctx context.Context, params GetUserParams) (GetUserRes, error)
 	// HealthCheck invokes healthCheck operation.
 	//
-	// Проверка живости.
+	// Проверка работоспособности сервиса.
 	//
 	// GET /healthz
 	HealthCheck(ctx context.Context) error
@@ -408,7 +408,7 @@ func (c *Client) sendCreateBooking(ctx context.Context, request *CreateBookingRe
 
 // CreateSpace invokes createSpace operation.
 //
-// Создать пространство (admin).
+// Создать пространство.
 //
 // POST /spaces
 func (c *Client) CreateSpace(ctx context.Context, request *CreateSpaceRequest) (CreateSpaceRes, error) {
@@ -580,39 +580,6 @@ func (c *Client) sendCreateUser(ctx context.Context, request *CreateUserRequest)
 	}
 	if err := encodeCreateUserRequest(request, r); err != nil {
 		return res, errors.Wrap(err, "encode request")
-	}
-
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, CreateUserOperation, r); {
-			case err == nil: // if NO error
-				satisfied[0] |= 1 << 0
-			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
-				// Skip this security.
-			default:
-				return res, errors.Wrap(err, "security \"BearerAuth\"")
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
-		}
 	}
 
 	stage = "SendRequest"
@@ -1514,39 +1481,6 @@ func (c *Client) sendGetUser(ctx context.Context, params GetUserParams) (res Get
 		return res, errors.Wrap(err, "create request")
 	}
 
-	{
-		type bitset = [1]uint8
-		var satisfied bitset
-		{
-			stage = "Security:BearerAuth"
-			switch err := c.securityBearerAuth(ctx, GetUserOperation, r); {
-			case err == nil: // if NO error
-				satisfied[0] |= 1 << 0
-			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
-				// Skip this security.
-			default:
-				return res, errors.Wrap(err, "security \"BearerAuth\"")
-			}
-		}
-
-		if ok := func() bool {
-		nextRequirement:
-			for _, requirement := range []bitset{
-				{0b00000001},
-			} {
-				for i, mask := range requirement {
-					if satisfied[i]&mask != mask {
-						continue nextRequirement
-					}
-				}
-				return true
-			}
-			return false
-		}(); !ok {
-			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
-		}
-	}
-
 	stage = "SendRequest"
 	resp, err := c.cfg.Client.Do(r)
 	if err != nil {
@@ -1572,7 +1506,7 @@ func (c *Client) sendGetUser(ctx context.Context, params GetUserParams) (res Get
 
 // HealthCheck invokes healthCheck operation.
 //
-// Проверка живости.
+// Проверка работоспособности сервиса.
 //
 // GET /healthz
 func (c *Client) HealthCheck(ctx context.Context) error {

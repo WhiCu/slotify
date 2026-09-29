@@ -40,11 +40,10 @@ var (
 	}
 	rn5AllowedHeaders = map[string]string{
 		"GET":  "Authorization",
-		"POST": "Authorization,Content-Type",
+		"POST": "Content-Type",
 	}
 	rn10AllowedHeaders = map[string]string{
 		"DELETE": "Authorization",
-		"GET":    "Authorization",
 	}
 	rn16AllowedHeaders = map[string]string{
 		"PATCH": "Authorization,Content-Type",
@@ -724,7 +723,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					switch method {
 					case "GET":
 						r.name = HealthCheckOperation
-						r.summary = "Проверка живости"
+						r.summary = "Проверка работоспособности сервиса"
 						r.operationID = "healthCheck"
 						r.operationGroup = ""
 						r.pathPattern = "/healthz"
@@ -757,7 +756,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						return r, true
 					case "POST":
 						r.name = CreateSpaceOperation
-						r.summary = "Создать пространство (admin)"
+						r.summary = "Создать пространство"
 						r.operationID = "createSpace"
 						r.operationGroup = ""
 						r.pathPattern = "/spaces"

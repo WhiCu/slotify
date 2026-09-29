@@ -5,7 +5,7 @@ info:
   version: "1.0.0"
 
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:8080
 
 tags:
   - name: Users
@@ -54,7 +54,7 @@ components:
 
     User:
       type: object
-      required: [id, role, created_at]
+      required: [id, role, created_at, token]
       properties:
         id:
           type: string
@@ -64,6 +64,9 @@ components:
         created_at:
           type: string
           format: date-time
+        token:
+          type: string
+          description: PASETO v4 local token
 
     CreateUserRequest:
       type: object
@@ -262,7 +265,7 @@ paths:
   /healthz:
     get:
       operationId: healthCheck
-      summary: Проверка живости
+      summary: Проверка работоспособности сервиса
       security: []
       responses:
         '200':
@@ -272,6 +275,7 @@ paths:
   /users:
     post:
       operationId: createUser
+      security: []
       tags: [Users]
       summary: Создать пользователя
       requestBody:
@@ -295,6 +299,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
     get:
       operationId: listUsers
+      security: [{ BearerAuth: [admin, member] }]
       tags: [Users]
       summary: Список пользователей (admin)
       responses:
@@ -316,6 +321,7 @@ paths:
       - $ref: '#/components/parameters/IdPath'
     get:
       operationId: getUser
+      security: []
       tags: [Users]
       summary: Получить пользователя
       responses:
@@ -380,7 +386,8 @@ paths:
     post:
       operationId: createSpace
       tags: [Spaces]
-      summary: Создать пространство (admin)
+      summary: Создать пространство
+      security: [{ BearerAuth: [admin] }]
       requestBody:
         required: true
         content:
@@ -404,6 +411,7 @@ paths:
       operationId: listSpaces
       tags: [Spaces]
       summary: Список пространств
+      security: [{ BearerAuth: [admin, member] }]
       parameters:
         - name: only_active
           in: query
@@ -559,6 +567,7 @@ paths:
       operationId: listMyBookings
       tags: [Bookings]
       summary: Мои брони (слоты сгруппированы в диапазоны)
+      security: [{ BearerAuth: [admin, member] }]
       responses:
         '200':
           description: OK
@@ -576,6 +585,7 @@ paths:
       operationId: getOccupancy
       tags: [Bookings]
       summary: Занятые слоты пространства за день
+      security: [{ BearerAuth: [admin, member] }]
       parameters:
         - name: space_id
           in: query
@@ -608,6 +618,7 @@ paths:
       operationId: getReservation
       tags: [Bookings]
       summary: Получить один слот-бронь по ID
+      security: [{ BearerAuth: [admin, member] }]
       responses:
         '200':
           description: OK

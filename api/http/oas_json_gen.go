@@ -3626,12 +3626,17 @@ func (s *User) encodeFields(e *jx.Encoder) {
 		e.FieldStart("created_at")
 		json.EncodeDateTime(e, s.CreatedAt)
 	}
+	{
+		e.FieldStart("token")
+		e.Str(s.Token)
+	}
 }
 
-var jsonFieldsNameOfUser = [3]string{
+var jsonFieldsNameOfUser = [4]string{
 	0: "id",
 	1: "role",
 	2: "created_at",
+	3: "token",
 }
 
 // Decode decodes User from json.
@@ -3677,6 +3682,18 @@ func (s *User) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"created_at\"")
 			}
+		case "token":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Str()
+				s.Token = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"token\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -3687,7 +3704,7 @@ func (s *User) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000111,
+		0b00001111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

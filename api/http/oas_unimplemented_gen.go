@@ -33,7 +33,7 @@ func (UnimplementedHandler) CreateBooking(ctx context.Context, req *CreateBookin
 
 // CreateSpace implements createSpace operation.
 //
-// Создать пространство (admin).
+// Создать пространство.
 //
 // POST /spaces
 func (UnimplementedHandler) CreateSpace(ctx context.Context, req *CreateSpaceRequest) (r CreateSpaceRes, _ error) {
@@ -114,7 +114,7 @@ func (UnimplementedHandler) GetUser(ctx context.Context, params GetUserParams) (
 
 // HealthCheck implements healthCheck operation.
 //
-// Проверка живости.
+// Проверка работоспособности сервиса.
 //
 // GET /healthz
 func (UnimplementedHandler) HealthCheck(ctx context.Context) error {

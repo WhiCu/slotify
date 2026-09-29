@@ -22,7 +22,7 @@ type Handler interface {
 	CreateBooking(ctx context.Context, req *CreateBookingRequest) (CreateBookingRes, error)
 	// CreateSpace implements createSpace operation.
 	//
-	// Создать пространство (admin).
+	// Создать пространство.
 	//
 	// POST /spaces
 	CreateSpace(ctx context.Context, req *CreateSpaceRequest) (CreateSpaceRes, error)
@@ -76,7 +76,7 @@ type Handler interface {
 	GetUser(ctx context.Context, params GetUserParams) (GetUserRes, error)
 	// HealthCheck implements healthCheck operation.
 	//
-	// Проверка живости.
+	// Проверка работоспособности сервиса.
 	//
 	// GET /healthz
 	HealthCheck(ctx context.Context) error

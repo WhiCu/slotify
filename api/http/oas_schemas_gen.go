@@ -936,6 +936,8 @@ type User struct {
 	ID        uuid.UUID `json:"id"`
 	Role      Role      `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
+	// PASETO v4 local token.
+	Token string `json:"token"`
 }
 
 // GetID returns the value of ID.
@@ -953,6 +955,11 @@ func (s *User) GetCreatedAt() time.Time {
 	return s.CreatedAt
 }
 
+// GetToken returns the value of Token.
+func (s *User) GetToken() string {
+	return s.Token
+}
+
 // SetID sets the value of ID.
 func (s *User) SetID(val uuid.UUID) {
 	s.ID = val
@@ -966,6 +973,11 @@ func (s *User) SetRole(val Role) {
 // SetCreatedAt sets the value of CreatedAt.
 func (s *User) SetCreatedAt(val time.Time) {
 	s.CreatedAt = val
+}
+
+// SetToken sets the value of Token.
+func (s *User) SetToken(val string) {
+	s.Token = val
 }
 
 func (*User) createUserRes()     {}
