@@ -23,4 +23,4 @@ COPY config/ /src/config/
 
 EXPOSE 8080
 
-ENTRYPOINT ["/src/bin/main", "-v", "-iii"]
+ENTRYPOINT ["/src/bin/main", "-v", "--up-migrate", "--config", "/src/config/config.yaml"]

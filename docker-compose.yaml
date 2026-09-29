@@ -1,5 +1,4 @@
 services:
-
   app:
     build:
       context: .
@@ -21,10 +20,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      otel-collector:
-        condition: service_started
+      # otel-collector:
+      #   condition: service_started
     networks:
       - slotify-net
+  
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: slotify-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+    networks:
+      - slotify-net
+    restart: unless-stopped
 
   postgres:
     image: postgres:18-alpine
@@ -48,19 +60,19 @@ services:
     networks:
       - slotify-net
 
-  otel-collector:
-    image: otel/opentelemetry-collector
-    container_name: otel-collector
-    volumes:
-      - ./otelcol/config.yaml:/etc/otelcol-contrib/config.yaml:ro
-    ports:
-      - "1888:1888"   # pprof extension
-      - "13133:13133" # health_check extension
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP http receiver
-      - "55679:55679" # zpages extension
-    networks:
-      - slotify-net
+  # otel-collector:
+  #   image: otel/opentelemetry-collector
+  #   container_name: otel-collector
+  #   volumes:
+  #     - ./otelcol/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+  #   ports:
+  #     - "1888:1888"   # pprof extension
+  #     - "13133:13133" # health_check extension
+  #     - "4317:4317"   # OTLP gRPC receiver
+  #     - "4318:4318"   # OTLP http receiver
+  #     - "55679:55679" # zpages extension
+  #   networks:
+  #     - slotify-net
 
 volumes:
   postgres_data:

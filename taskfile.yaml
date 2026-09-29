@@ -128,6 +128,13 @@ tasks:
       - task: docker:up
       - task: docker:logs
 
+  docker:build:up:logs:
+    desc: Build all Docker images and start full stack and follow logs
+    cmds:
+      - task: docker:build
+      - task: docker:up
+      - task: docker:logs
+
   docker:down:
     desc: Stop full stack
     cmds:
@@ -135,7 +142,7 @@ tasks:
   docker:down:v:
     desc: Stop full stack with volumes
     cmds:
-      - docker compose down
+      - docker compose down -v
   
   docker:logs:
     desc: Show logs
