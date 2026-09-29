@@ -15,8 +15,11 @@ import (
 	"github.com/samber/do/v2"
 	"github.com/whicu/slotify/internal/application"
 	"github.com/whicu/slotify/internal/config"
+	"github.com/whicu/slotify/internal/infrastructure/crypto"
 	"github.com/whicu/slotify/internal/infrastructure/storage"
 	"github.com/whicu/slotify/internal/infrastructure/telemetry"
+	presentation "github.com/whicu/slotify/internal/presentation/http"
+	"github.com/whicu/slotify/pkg/idgen"
 	"github.com/whicu/slotify/pkg/logger"
 )
 
@@ -30,7 +33,7 @@ func New(ctx context.Context, fsys fs.FS, configPath string) *do.RootScope {
 	injector := do.NewWithOpts(&do.InjectorOpts{
 		Logf:                     diLogf,
 		HealthCheckParallelism:   16,
-		HealthCheckGlobalTimeout: 20 * time.Second,
+		HealthCheckGlobalTimeout: 5 * time.Minute,
 	})
 
 	do.ProvideValue(injector, ctx)
@@ -45,10 +48,13 @@ func diLogf(format string, args ...any) {
 
 func registerPackages(i do.Injector, fsys fs.FS, configPath string) {
 	config.Package(fsys, configPath)(i) // no dependencies
+	crypto.Package(i)                   // no dependencies
+	idgen.Package(i)                    // no dependencies
 	telemetry.Package(i)                // config
 	logger.Package(i)                   // config, telemetry
 	storage.Package(i)                  // config, telemetry
 	application.Package(i)              // config, webauthnadapter, crypto, storage, telemetry
+	presentation.Package(i)             // config, application, crypto
 }
 
 func Build(ctx context.Context, injector *do.RootScope, cfg Config) (*http.Server, error) {
@@ -67,7 +73,7 @@ func Build(ctx context.Context, injector *do.RootScope, cfg Config) (*http.Serve
 	// 	return nil, err
 	// }
 
-	if err := initStorage(ctx, injector); err != nil {
+	if err := initStorage(ctx, injector, cfg.UpMigrations); err != nil {
 		return nil, err
 	}
 
@@ -129,11 +135,16 @@ func initTelemetry(injector do.Injector) error {
 // 	return log, nil
 // }
 
-func initStorage(ctx context.Context, injector do.Injector) error {
+func initStorage(ctx context.Context, injector do.Injector, doMigrate bool) error {
 	srg, err := do.Invoke[*storage.Storage](injector)
 	if err != nil {
 		return fmt.Errorf("init storage: %w", err)
 	}
+
+	if !doMigrate {
+		return nil
+	}
+
 	if errUp := srg.Up(ctx); errUp != nil {
 		return fmt.Errorf("storage up: %w", errUp)
 	}
