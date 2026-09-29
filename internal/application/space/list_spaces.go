@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 )
@@ -35,11 +36,12 @@ type ListSpacesInput struct {
 }
 
 type ListSpacesItem struct {
-	ID       domainspace.SpaceID
-	Name     string
-	Type     string
-	Capacity int
-	Active   bool
+	ID        domainspace.SpaceID
+	Name      string
+	Type      string
+	Capacity  int
+	Active    bool
+	CreatedAt time.Time
 }
 
 type ListSpacesOutput struct {
@@ -65,11 +67,12 @@ func (l *ListSpaces) Execute(
 
 	for _, s := range all {
 		items = append(items, ListSpacesItem{
-			ID:       s.ID(),
-			Name:     s.Name(),
-			Type:     s.Type().String(),
-			Capacity: s.Capacity(),
-			Active:   s.IsActive(),
+			ID:        s.ID(),
+			Name:      s.Name(),
+			Type:      s.Type().String(),
+			Capacity:  s.Capacity(),
+			Active:    s.IsActive(),
+			CreatedAt: s.CreatedAt(),
 		})
 	}
 

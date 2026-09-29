@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
@@ -61,11 +62,12 @@ type UpdateSpaceInput struct {
 }
 
 type UpdateSpaceOutput struct {
-	ID       domainspace.SpaceID
-	Name     string
-	Type     string
-	Capacity int
-	Active   bool
+	ID        domainspace.SpaceID
+	Name      string
+	Type      string
+	Capacity  int
+	Active    bool
+	CreatedAt time.Time
 }
 
 func (u *UpdateSpace) Execute(
@@ -121,11 +123,12 @@ func (u *UpdateSpace) Execute(
 		}
 
 		out = UpdateSpaceOutput{
-			ID:       s.ID(),
-			Name:     s.Name(),
-			Type:     s.Type().String(),
-			Capacity: s.Capacity(),
-			Active:   s.IsActive(),
+			ID:        s.ID(),
+			Name:      s.Name(),
+			Type:      s.Type().String(),
+			Capacity:  s.Capacity(),
+			Active:    s.IsActive(),
+			CreatedAt: s.CreatedAt(),
 		}
 
 		return nil

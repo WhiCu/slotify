@@ -22,10 +22,6 @@ type IDGenerator interface {
 	NewID() domainspace.SpaceID
 }
 
-type Clock interface {
-	Now() time.Time
-}
-
 type Transactor interface {
 	RunInTransaction(ctx context.Context, fn func(context.Context) error) error
 }
@@ -44,7 +40,6 @@ type CreateSpaceSaver interface {
 type CreateSpace struct {
 	log        *slog.Logger
 	ids        IDGenerator
-	clock      Clock
 	users      CreateSpaceUserFinder
 	spaces     CreateSpaceSaver
 	transactor Transactor
@@ -53,7 +48,6 @@ type CreateSpace struct {
 func NewCreateSpace(
 	log *slog.Logger,
 	ids IDGenerator,
-	clock Clock,
 	users CreateSpaceUserFinder,
 	spaces CreateSpaceSaver,
 	transactor Transactor,
@@ -61,7 +55,6 @@ func NewCreateSpace(
 	return &CreateSpace{
 		log:        log,
 		ids:        ids,
-		clock:      clock,
 		users:      users,
 		spaces:     spaces,
 		transactor: transactor,
@@ -76,10 +69,12 @@ type CreateSpaceInput struct {
 }
 
 type CreateSpaceOutput struct {
-	ID       domainspace.SpaceID
-	Name     string
-	Type     string
-	Capacity int
+	ID        domainspace.SpaceID
+	Name      string
+	Type      string
+	Capacity  int
+	Active    bool
+	CreatedAt time.Time
 }
 
 func (c *CreateSpace) Execute(
@@ -119,7 +114,7 @@ func (c *CreateSpace) Execute(
 			in.Name,
 			spaceType,
 			in.Capacity,
-			c.clock.Now(),
+			time.Now(),
 		)
 		if errNewSpace != nil {
 			return errNewSpace
@@ -130,10 +125,12 @@ func (c *CreateSpace) Execute(
 		}
 
 		out = CreateSpaceOutput{
-			ID:       s.ID(),
-			Name:     s.Name(),
-			Type:     s.Type().String(),
-			Capacity: s.Capacity(),
+			ID:        s.ID(),
+			Name:      s.Name(),
+			Type:      s.Type().String(),
+			Capacity:  s.Capacity(),
+			Active:    s.IsActive(),
+			CreatedAt: s.CreatedAt(),
 		}
 
 		return nil

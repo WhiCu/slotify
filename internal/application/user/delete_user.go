@@ -84,6 +84,12 @@ func (d *DeleteUser) Execute(
 	}
 
 	err := d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+		d.log.DebugContext(
+			ctx,
+			"start of delete user transaction",
+			slog.String("target_user_id", in.TargetUserID.String()),
+			slog.String("actor_id", in.ActorID.String()),
+		)
 		actor, target, err := d.loadUsersForUpdate(
 			ctx,
 			in.ActorID,
@@ -105,6 +111,12 @@ func (d *DeleteUser) Execute(
 			return fmt.Errorf("delete user: %w", errDelete)
 		}
 
+		d.log.DebugContext(
+			ctx,
+			"end of delete user transaction",
+			slog.String("target_user_id", target.ID().String()),
+			slog.String("actor_id", actor.ID().String()),
+		)
 		return nil
 	})
 

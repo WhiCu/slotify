@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
@@ -50,8 +51,9 @@ type UpdateRoleInput struct {
 }
 
 type UpdateRoleOutput struct {
-	ID      domainuser.UserID
-	NewRole string
+	ID        domainuser.UserID
+	NewRole   string
+	CreatedAt time.Time
 }
 
 func (u *UpdateRole) Execute(
@@ -109,11 +111,13 @@ func (u *UpdateRole) Execute(
 		slog.String("target_user_id", target.ID().String()),
 		slog.String("new_role", target.Role().String()),
 		slog.String("actor_id", in.ActorID.String()),
+		slog.Time("created_at", target.CreatedAt()),
 	)
 
 	return &UpdateRoleOutput{
-		ID:      target.ID(),
-		NewRole: target.Role().String(),
+		ID:        target.ID(),
+		NewRole:   target.Role().String(),
+		CreatedAt: target.CreatedAt(),
 	}, nil
 }
 

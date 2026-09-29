@@ -32,10 +32,6 @@ type Transactor interface {
 	RunInTransaction(ctx context.Context, fn func(context.Context) error) error
 }
 
-type Clock interface {
-	Now() time.Time
-}
-
 type CreateBookingUserFinder interface {
 	FindByIDForUpdate(
 		ctx context.Context,
@@ -69,7 +65,6 @@ type CreateBookingSaver interface {
 type CreateBooking struct {
 	log          *slog.Logger
 	ids          IDGenerator
-	clock        Clock
 	users        CreateBookingUserFinder
 	spaces       CreateBookingSpaceFinder
 	reservations CreateBookingConflictChecker
@@ -80,7 +75,6 @@ type CreateBooking struct {
 func NewCreateBooking(
 	log *slog.Logger,
 	ids IDGenerator,
-	clock Clock,
 	users CreateBookingUserFinder,
 	spaces CreateBookingSpaceFinder,
 	reservations CreateBookingConflictChecker,
@@ -90,7 +84,6 @@ func NewCreateBooking(
 	return &CreateBooking{
 		log:          log,
 		ids:          ids,
-		clock:        clock,
 		users:        users,
 		spaces:       spaces,
 		reservations: reservations,
@@ -248,7 +241,7 @@ func (c *CreateBooking) createReservations(
 		func() domainbooking.ReservationID {
 			return c.ids.NewID()
 		},
-		c.clock.Now(),
+		time.Now(),
 	)
 	if err != nil {
 		return nil, err

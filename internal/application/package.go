@@ -63,12 +63,6 @@ func newCreateBooking(i do.Injector) (*booking.CreateBooking, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	clock, err := do.InvokeAs[booking.Clock](i)
-	if err != nil {
-		return nil, err
-	}
-
 	users, err := do.InvokeAs[booking.CreateBookingUserFinder](i)
 	if err != nil {
 		return nil, err
@@ -94,7 +88,7 @@ func newCreateBooking(i do.Injector) (*booking.CreateBooking, error) {
 		return nil, err
 	}
 
-	return booking.NewCreateBooking(log, ids, clock, users, spaces, reservations, saver, transactor), nil
+	return booking.NewCreateBooking(log, ids, users, spaces, reservations, saver, transactor), nil
 }
 
 func newGetBooking(i do.Injector) (*booking.GetBooking, error) {
@@ -153,12 +147,6 @@ func newCreateSpace(i do.Injector) (*space.CreateSpace, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	clock, err := do.InvokeAs[space.Clock](i)
-	if err != nil {
-		return nil, err
-	}
-
 	users, err := do.InvokeAs[space.CreateSpaceUserFinder](i)
 	if err != nil {
 		return nil, err
@@ -174,7 +162,7 @@ func newCreateSpace(i do.Injector) (*space.CreateSpace, error) {
 		return nil, err
 	}
 
-	return space.NewCreateSpace(log, ids, clock, users, spaces, transactor), nil
+	return space.NewCreateSpace(log, ids, users, spaces, transactor), nil
 }
 
 func newGetSpace(i do.Injector) (*space.GetSpace, error) {
@@ -263,6 +251,35 @@ func newDeleteSpace(i do.Injector) (*space.DeleteSpace, error) {
 	return space.NewDeleteSpace(log, users, spaces, deleter, transactor), nil
 }
 
+func newDeactivateSpace(i do.Injector) (*space.DeactivateSpace, error) {
+	log, err := do.Invoke[*slog.Logger](i)
+	if err != nil {
+		return nil, err
+	}
+
+	users, err := do.InvokeAs[space.DeactivateSpaceUserFinder](i)
+	if err != nil {
+		return nil, err
+	}
+
+	spaces, err := do.InvokeAs[space.DeactivateSpaceFinder](i)
+	if err != nil {
+		return nil, err
+	}
+
+	saver, err := do.InvokeAs[space.DeactivateSpaceSaver](i)
+	if err != nil {
+		return nil, err
+	}
+
+	transactor, err := do.InvokeAs[space.Transactor](i)
+	if err != nil {
+		return nil, err
+	}
+
+	return space.NewDeactivateSpace(log, users, spaces, saver, transactor), nil
+}
+
 // =============================================================================
 // User Use Cases
 // =============================================================================
@@ -273,12 +290,17 @@ func newCreateUser(i do.Injector) (*user.CreateUser, error) {
 		return nil, err
 	}
 
-	ids, err := do.InvokeAs[user.IDGenerator](i)
+	cfg, err := do.Invoke[Config](i)
 	if err != nil {
 		return nil, err
 	}
 
-	clock, err := do.InvokeAs[user.Clock](i)
+	tokenIssuer, err := do.InvokeAs[user.TokenIssuer](i)
+	if err != nil {
+		return nil, err
+	}
+
+	ids, err := do.InvokeAs[user.IDGenerator](i)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +325,7 @@ func newCreateUser(i do.Injector) (*user.CreateUser, error) {
 		return nil, err
 	}
 
-	return user.NewCreateUser(log, ids, clock, counter, saver, rootLocker, transactor), nil
+	return user.NewCreateUser(log, ids, counter, saver, rootLocker, transactor, tokenIssuer, cfg.User.TTL), nil
 }
 
 func newGetUser(i do.Injector) (*user.GetUser, error) {
@@ -413,6 +435,7 @@ var Package = do.Package(
 	do.Lazy(newListSpaces),
 	do.Lazy(newUpdateSpace),
 	do.Lazy(newDeleteSpace),
+	do.Lazy(newDeactivateSpace),
 
 	// user
 	do.Lazy(newCreateUser),
