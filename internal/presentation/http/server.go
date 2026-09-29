@@ -1,12 +1,14 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	api "github.com/whicu/slotify/api/http"
 )
 
 func NewServer(
@@ -36,7 +38,8 @@ type RouterConfig struct {
 }
 
 func NewRouter(
-	h http.Handler,
+	h api.Handler,
+	secHandler api.SecurityHandler,
 	config RouterConfig,
 ) (http.Handler, error) {
 	r := chi.NewRouter()
@@ -65,7 +68,15 @@ func NewRouter(
 		MaxAge:           300,
 	}))
 
-	r.Mount("/", h)
+	ogenServer, err := api.NewServer(
+		h,
+		secHandler,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init ogen server: %w", err)
+	}
+
+	r.Mount("/", ogenServer)
 
 	return r, nil
 }
