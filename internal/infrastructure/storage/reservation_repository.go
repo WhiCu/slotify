@@ -238,6 +238,16 @@ func (r *ReservationRepository) DeleteByUserID(
 	)
 }
 
+func (r *ReservationRepository) CancelAllByUserID(
+	ctx context.Context,
+	userID domainuser.UserID,
+) error {
+	return r.storage.GetQueries(ctx).DeleteReservationsByUserID(
+		ctx,
+		userID,
+	)
+}
+
 func rowToReservation(
 	row pg.Reservation,
 ) (*domainbooking.Reservation, error) {

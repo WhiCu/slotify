@@ -86,9 +86,17 @@ func (s *Storage) Up(ctx context.Context) error {
 	sqlDB := stdlib.OpenDBFromPool(s.db)
 	defer sqlDB.Close()
 
+	s.log.DebugContext(
+		ctx,
+		"running migrations",
+	)
 	if err := migrations.Up(ctx, sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
+	s.log.DebugContext(
+		ctx,
+		"migrations completed",
+	)
 
 	return nil
 }
@@ -107,6 +115,7 @@ func (s *Storage) Reset(ctx context.Context) error {
 func (s *Storage) Shutdown() {
 	s.db.Close()
 }
+
 func (s *Storage) HealthCheck(ctx context.Context) error {
 	return s.Ping(ctx)
 }

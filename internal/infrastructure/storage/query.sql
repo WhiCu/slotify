@@ -48,7 +48,7 @@ FROM users
 ORDER BY created_at, id;
 
 
--- name: DeleteUser :exec
+-- name: DeleteUser :execresult
 DELETE FROM users
 WHERE id = sqlc.arg(id);
 
@@ -107,7 +107,6 @@ ORDER BY name, id;
 -- name: DeleteSpace :exec
 DELETE FROM spaces
 WHERE id = sqlc.arg(id);
-
 
 -- ============================================================
 -- Reservations

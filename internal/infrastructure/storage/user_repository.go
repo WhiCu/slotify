@@ -107,10 +107,16 @@ func (r *UserRepository) Delete(
 	ctx context.Context,
 	id domainuser.UserID,
 ) error {
-	return r.storage.GetQueries(ctx).DeleteUser(
-		ctx,
-		id,
-	)
+	result, err := r.storage.GetQueries(ctx).DeleteUser(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() != 1 {
+		return domain.ErrNotFound
+	}
+
+	return nil
 }
 
 func rowToUser(row pg.User) (*domainuser.User, error) {

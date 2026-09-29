@@ -24,7 +24,9 @@ func NewTokenCodec(privateKey paseto.V4SymmetricKey) *TokenCodec {
 
 func (sc *TokenCodec) Encode(payload map[string]any, ttl time.Duration) (string, error) {
 	token := paseto.NewToken()
-	token.SetExpiration(time.Now().Add(ttl))
+	if ttl > 0 {
+		token.SetExpiration(time.Now().Add(ttl))
+	}
 
 	for key, value := range payload {
 		err := token.Set(key, value)
