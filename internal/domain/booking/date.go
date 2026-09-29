@@ -36,6 +36,16 @@ func FromTime(t time.Time) Date {
 	}
 }
 
+func (d Date) Time() time.Time {
+	return time.Date(
+		d.year,
+		d.month,
+		d.day,
+		0, 0, 0, 0,
+		time.UTC,
+	)
+}
+
 func (d Date) Year() int {
 	return d.year
 }
