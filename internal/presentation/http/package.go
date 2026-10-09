@@ -136,6 +136,11 @@ func newRouter(i do.Injector) (http.Handler, error) {
 		return nil, fmt.Errorf("http: invoke config: %w", err)
 	}
 
+	log, err := do.Invoke[*slog.Logger](i)
+	if err != nil {
+		return nil, fmt.Errorf("http: invoke logger: %w", err)
+	}
+
 	h, err := do.InvokeAs[api.Handler](i)
 	if err != nil {
 		return nil, fmt.Errorf("http: invoke handler: %w", err)
@@ -146,7 +151,7 @@ func newRouter(i do.Injector) (http.Handler, error) {
 		return nil, fmt.Errorf("http: invoke security handler: %w", err)
 	}
 
-	return NewRouter(h, sec, RouterConfig{
+	return NewRouter(log, h, sec, RouterConfig{
 		TrustedProxies:   cfg.TrustedProxies,
 		AllowedOrigins:   cfg.CORS.AllowedOrigins,
 		RequestSizeLimit: cfg.RequestSizeLimit,

@@ -2,12 +2,14 @@ package http
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	slogchi "github.com/samber/slog-chi"
 	api "github.com/whicu/slotify/api/http"
 )
 
@@ -38,6 +40,7 @@ type RouterConfig struct {
 }
 
 func NewRouter(
+	log *slog.Logger,
 	h api.Handler,
 	secHandler api.SecurityHandler,
 	config RouterConfig,
@@ -47,7 +50,7 @@ func NewRouter(
 	r.Use(
 		middleware.Recoverer,
 		middleware.RequestID,
-		middleware.Logger,
+		slogchi.New(log),
 		middleware.RequestSize(config.RequestSizeLimit),
 	)
 

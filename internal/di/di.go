@@ -91,7 +91,7 @@ func Run(ctx context.Context, injector *do.RootScope, cfg Config) error {
 		return err
 	}
 
-	log, err := do.Invoke[*slog.Logger](injector) // тот же singleton, что и в Build
+	log, err := do.Invoke[*slog.Logger](injector)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
@@ -100,7 +100,7 @@ func Run(ctx context.Context, injector *do.RootScope, cfg Config) error {
 		return errServe
 	}
 
-	return waitForShutdown(ctx, injector)
+	return waitForShutdown(injector)
 }
 
 func serve(ctx context.Context, log *slog.Logger, srv *http.Server) error {
@@ -151,8 +151,8 @@ func initStorage(ctx context.Context, injector do.Injector, doMigrate bool) erro
 	return nil
 }
 
-func waitForShutdown(ctx context.Context, injector *do.RootScope) error {
-	_, report := injector.ShutdownOnSignalsWithContext(ctx)
+func waitForShutdown(injector *do.RootScope) error {
+	_, report := injector.ShutdownOnSignals()
 	if errStr := report.Error(); errStr != "" {
 		return fmt.Errorf("shutdown: %v", errStr)
 	}

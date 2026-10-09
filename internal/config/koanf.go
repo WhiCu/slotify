@@ -22,8 +22,8 @@ var Validate = validator.New(validator.WithRequiredStructEnabled())
 
 func NewKoanf(fsys fs.FS, path string) (*koanf.Koanf, error) {
 	var conf = koanf.Conf{
-		Delim:       ".",
-		StrictMerge: true,
+		Delim: ".",
+		// StrictMerge: true,
 	}
 	var k = koanf.NewWithConf(conf)
 
@@ -34,10 +34,13 @@ func NewKoanf(fsys fs.FS, path string) (*koanf.Koanf, error) {
 	err = k.Load(env.Provider(".", env.Opt{
 		Prefix: "APP_",
 		TransformFunc: func(key, value string) (string, any) {
-			key = strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(key, "APP_")), "_", ".")
+			key = strings.TrimPrefix(key, "APP_")
+			key = strings.ToLower(key)
+			key = strings.ReplaceAll(key, "__", ".")
 
-			if strings.Contains(value, " ") {
-				return key, strings.Split(value, " ")
+			if strings.Contains(value, ",") {
+				values := strings.Split(value, ",")
+				return key, values
 			}
 
 			return key, value
