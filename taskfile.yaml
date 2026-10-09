@@ -155,26 +155,24 @@ tasks:
  # ── Kubernetes (minikube) ─────────────────────────────────────────────────
 
   k8s:start:
-    desc: Start minikube
+    desc: Start 
+    vars:
+      CPUS: '{{.CPUS | default "8"}}'
+      MEMORY: '{{.MEMORY | default "6144"}}'
     cmds:
-      - minikube start --driver=docker --cpus=8 --memory=6144
+      - minikube start --driver=docker --cpus={{.CPUS}} --memory={{.MEMORY}}
 
   k8s:load:
     desc: Build images and load them into minikube
     cmds:
       - task: docker:build
-      - minikube image load slotify-backend:{{.BACKEND_VERSION}}
-      - minikube image load slotify-frontend:{{.FRONTEND_VERSION}}
+      - minikube image load --overwrite=true slotify-backend:{{.BACKEND_VERSION}}
+      - minikube image load --overwrite=true slotify-frontend:{{.FRONTEND_VERSION}}
   k8s:load:delete:
     desc: Delete images from minikube
     cmds:
       - minikube image rm slotify-backend:{{.BACKEND_VERSION}}
       - minikube image rm slotify-frontend:{{.FRONTEND_VERSION}}
-  k8s:build:load:
-    desc: Build images, load them into minikube and follow logs
-    cmds:
-      - task: docker:build
-      - task: k8s:load
 
   k8s:apply:
     desc: Apply all manifests in order

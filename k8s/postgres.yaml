@@ -23,6 +23,13 @@ spec:
           envFrom:
             - secretRef:
                 name: slotify-db
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 1Gi
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql
@@ -47,6 +54,7 @@ metadata:
   name: postgres
   namespace: slotify
 spec:
+  clusterIP: None
   selector:
     app: postgres
   ports:
