@@ -10,7 +10,6 @@ COPY api api
 COPY cmd cmd
 COPY pkg pkg
 COPY internal internal
-COPY config config
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -extldflags '-static'" -o ./bin/main ./cmd/main.go
 
 # Runtime
