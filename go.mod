@@ -24,6 +24,7 @@ require (
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/samber/do/http/std/v2 v2.0.0-20260907165204-9bae325c6606
 	github.com/samber/do/v2 v2.1.0
+	github.com/samber/slog-chi v1.19.1
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/urfave/cli/v3 v3.13.0

@@ -39,13 +39,16 @@ func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
 }
 
 func LogWriter(cfg FileConfig) phuslog.Writer {
-	return &phuslog.MultiEntryWriter{
+	writers := phuslog.MultiEntryWriter{
 		&phuslog.ConsoleWriter{
 			ColorOutput:    true,
 			QuoteString:    true,
 			EndWithMessage: true,
 		},
-		&phuslog.AsyncWriter{
+	}
+
+	if cfg.Name != "" {
+		writers = append(writers, &phuslog.AsyncWriter{
 			ChannelSize:   cfg.ChannelSize,
 			DiscardOnFull: cfg.Discard,
 			Writer: &phuslog.FileWriter{
@@ -57,8 +60,9 @@ func LogWriter(cfg FileConfig) phuslog.Writer {
 				MaxBackups: cfg.Backups,
 				LocalTime:  false,
 			},
-		},
+		})
 	}
+	return &writers
 }
 
 func levelWrapper(level string) (phuslog.Level, error) {

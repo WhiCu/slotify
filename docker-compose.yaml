@@ -3,15 +3,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: slotify-backend:${BACKEND_VERSION:?BACKEND_VERSION не задан}
     container_name: slotify
     env_file:
       - config/.env
     environment:
-      APP_STORAGE_HOST: postgres
-      APP_STORAGE_USER: ${DB_USER:-postgres}
-      APP_STORAGE_PASS: ${DB_PASS:-postgres}
-      APP_STORAGE_NAME: ${DB_NAME:-slotify}
-      APP_TELEMETRY_EXPORTER_CONN_ENDPOINT: otel-collector:4317
+      APP_STORAGE__HOST: postgres
+      APP_STORAGE__USER: ${DB_USER:-postgres}
+      APP_STORAGE__PASS: ${DB_PASS:-postgres}
+      APP_STORAGE__NAME: ${DB_NAME:-slotify}
+      APP_TELEMETRY__EXPORTER__CONN__ENDPOINT: otel-collector:4317
+      APP_HTTP__CORS__ALLOWED_ORIGINS: http://localhost:3000
     ports:
       - "8080:8080"
     volumes:
@@ -29,6 +31,7 @@ services:
     build:
       context: frontend
       dockerfile: Dockerfile
+    image: slotify-frontend:${FRONTEND_VERSION:?FRONTEND_VERSION не задан}
     container_name: slotify-frontend
     ports:
       - "3000:80"
