@@ -8,6 +8,8 @@ env:
   DIR_CONFIG: ./config
   PATH_CONFIG: "{{.DIR_CONFIG}}/config.yaml"
   APP_LOGGER_LEVEL: "debug"
+  FRONTEND_VERSION: "0.1.0"
+  BACKEND_VERSION: "0.1.0"
 
 dotenv:
   - .env
@@ -115,7 +117,8 @@ tasks:
   docker:build:
     desc: Build all Docker images
     cmds:
-      - docker compose build
+      - docker build -t slotify-backend:{{.BACKEND_VERSION}} .
+      - docker build -t slotify-frontend:{{.FRONTEND_VERSION}} frontend
 
   docker:up:
     desc: Start full stack
@@ -148,3 +151,104 @@ tasks:
     desc: Show logs
     cmds:
       - docker compose logs -f
+
+ # ── Kubernetes (minikube) ─────────────────────────────────────────────────
+
+  k8s:start:
+    desc: Start minikube
+    cmds:
+      - minikube start --driver=docker --cpus=8 --memory=6144
+
+  k8s:load:
+    desc: Build images and load them into minikube
+    cmds:
+      - task: docker:build
+      - minikube image load slotify-backend:{{.BACKEND_VERSION}}
+      - minikube image load slotify-frontend:{{.FRONTEND_VERSION}}
+  k8s:load:delete:
+    desc: Delete images from minikube
+    cmds:
+      - minikube image rm slotify-backend:{{.BACKEND_VERSION}}
+      - minikube image rm slotify-frontend:{{.FRONTEND_VERSION}}
+  k8s:build:load:
+    desc: Build images, load them into minikube and follow logs
+    cmds:
+      - task: docker:build
+      - task: k8s:load
+
+  k8s:apply:
+    desc: Apply all manifests in order
+    cmds:
+      - kubectl apply -f k8s/namespace.yaml
+      - kubectl apply -f k8s/secret.yaml
+      - kubectl apply -f k8s/postgres.yaml
+      - kubectl rollout status statefulset/postgres -n slotify --timeout=120s
+      - kubectl apply -f k8s/backend.yaml
+      - kubectl apply -f k8s/frontend.yaml
+      - kubectl apply -f k8s/ingress.yaml
+
+  k8s:deploy:
+    desc: Build, load images into minikube and deploy the app
+    cmds:
+      - task: k8s:load
+      - task: k8s:apply
+  
+  k8s:deploy:start:full:
+    desc: Start minikube, build, load images into minikube and deploy the app
+    cmds:
+      - task: k8s:start
+      - task: k8s:traefik
+      - task: k8s:deploy
+
+  k8s:status:
+    desc: Show pods and services in slotify namespace
+    cmds:
+      - kubectl get pods,svc -n slotify
+
+  k8s:scale:
+    desc: "Scale app deployment (usage: task k8s:scale REPLICAS=3)"
+    vars:
+      REPLICAS: '{{.REPLICAS | default "3"}}'
+    cmds:
+      - kubectl scale deployment slotify-backend --replicas={{.REPLICAS}} -n slotify
+
+  k8s:logs:
+    desc: Follow app logs
+    cmds:
+      - kubectl logs -f deployment/slotify-backend -n slotify --all-pods=true --prefix=true
+
+  k8s:pods:
+    desc: Show all pods
+    cmds:
+      - kubectl get pods -n traefik -o wide
+      - kubectl get pods -n slotify -o wide
+  k8s:pods:w:
+    desc: Show all pods
+    cmds:
+      - kubectl get pods -n slotify -o wide -w
+
+  k8s:delete:
+    desc: Delete the slotify namespace with all resources
+    cmds:
+      - kubectl delete namespace slotify --ignore-not-found
+    
+  k8s:traefik:
+    desc: Install Traefik via Helm
+    cmds:
+      - helm repo add traefik https://traefik.github.io/charts
+      - helm repo update
+      - helm upgrade --install traefik traefik/traefik -n traefik --create-namespace
+
+  k8s:tunnel:
+    desc: Run minikube tunnel (keep running, may need admin rights)
+    cmds:
+      - minikube tunnel
+  
+  k8s:stop:
+    desc: Stop minikube, keep all data
+    cmds:
+      - minikube stop
+  k8s:destroy:
+    desc: Delete the whole minikube cluster
+    cmds:
+      - minikube delete

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slotify-backend
+  namespace: slotify
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: slotify-backend
+  template:
+    metadata:
+      labels:
+        app: slotify-backend
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: slotify-backend
+          image: slotify-backend:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: slotify-app
+          volumeMounts:
+            - name: logs
+              mountPath: /src/logs
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+      volumes:
+        - name: logs
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slotify-backend
+  namespace: slotify
+spec:
+  selector:
+    app: slotify-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
