@@ -1,0 +1,9 @@
+dependencies:
+- name: victoria-logs-single
+  repository: https://victoriametrics.github.io/helm-charts/
+  version: 0.13.10
+- name: opentelemetry-collector
+  repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+  version: 0.175.1
+digest: sha256:2e2c137b0e01388bf778ea4c3d3f04d611ec3404ddca1e9e4ca0d79192a5ba1a
+generated: "2026-10-12T22:47:41.7608518+03:00"

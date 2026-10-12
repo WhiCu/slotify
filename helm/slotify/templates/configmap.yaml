@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slotify-app
+  namespace: {{ .Release.Namespace }}
+data:
+  APP_HTTP__CORS__ALLOWED_ORIGINS: {{ .Values.backend.allowedOrigins | quote }}
+
+  APP_STORAGE__HOST: {{ .Values.postgres.host | quote }}
+  APP_STORAGE__PORT: {{ .Values.postgres.port | quote }}
+  APP_STORAGE__NAME: {{ .Values.postgres.db | quote }}
+  APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | quote }}
+
+  APP_TELEMETRY__ENABLED: {{ .Values.telemetry.enabled | quote }}
+  APP_TELEMETRY__ENVIRONMENT: {{ .Values.telemetry.environment | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__ENDPOINT: {{ .Values.telemetry.endpoint | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__INSECURE: {{ .Values.telemetry.insecure | quote }}
+
+  APP_LOGGER__LEVEL: {{ .Values.logger.level | quote }}

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: metrics
+version: 0.1.0
+dependencies:
+  - name: victoria-logs-single
+    version: "*"
+    repository: https://victoriametrics.github.io/helm-charts/
+    alias: victorialogs
+  - name: opentelemetry-collector
+    version: "*"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    alias: otelcollector

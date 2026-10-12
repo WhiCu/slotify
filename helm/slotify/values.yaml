@@ -1,0 +1,42 @@
+host: slotify.local
+
+backend:
+  image: slotify-backend
+  replicas: 3
+  allowedOrigins: "http://slotify.local"
+  resources:
+    requests: { cpu: 500m, memory: 128Mi }
+    limits:   { cpu: 1000m, memory: 256Mi }
+  crypto:
+    hmacSecret: "CHANGE_ME_32_PLUS_CHAR_SECRET_1234567890"
+    pasetoSymmetricKey: "0000000000000000000000000000000000000000000000000000000000000000"
+    pasetoSecretKey: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+logger:
+  level: "debug"
+
+telemetry:
+  enabled: "true"
+  endpoint: "otel-collector.metrics.svc:4317"
+  environment: "dev"
+  insecure: "true"
+
+frontend:
+  image: slotify-frontend
+  replicas: 3
+  resources:
+    requests: { cpu: 100m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 64Mi }
+
+postgres:
+  image: postgres:18-alpine
+  host: "postgres"
+  port: "5432"
+  user: postgres
+  password: postgres
+  db: slotify
+  insecure: "true"
+  storage: 1Gi
+  resources:
+    requests: { cpu: 1000m, memory: 512Mi }
+    limits:   { cpu: 2000m, memory: 1Gi }

@@ -2,9 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: slotify-frontend
-  namespace: slotify
+  namespace: {{ .Release.Namespace }}
 spec:
-  replicas: 3
+  replicas: {{ .Values.frontend.replicas }}
   selector:
     matchLabels:
       app: slotify-frontend
@@ -16,24 +16,24 @@ spec:
       enableServiceLinks: false
       containers:
         - name: slotify-frontend
-          image: slotify-frontend:0.1.0
+          image: {{ .Values.frontend.image }}:{{ .Values.frontend.tag }}
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
           resources:
             requests:
-              cpu: 100m
-              memory: 32Mi
+              cpu: {{ .Values.frontend.resources.requests.cpu }}
+              memory: {{ .Values.frontend.resources.requests.memory }}
             limits:
-              cpu: 200m
-              memory: 64Mi
+              cpu: {{ .Values.frontend.resources.limits.cpu }}
+              memory: {{ .Values.frontend.resources.limits.memory }}
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: slotify-frontend
-  namespace: slotify
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     app: slotify-frontend
