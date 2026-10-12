@@ -2,8 +2,6 @@ package logger_test
 
 import (
 	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -59,13 +57,6 @@ var _ = Describe("Logger Package", func() {
 			cfg := logger.Config{
 				Level:  "info",
 				Caller: 1,
-				File: logger.FileConfig{
-					Name:        filepath.Join(os.TempDir(), "test.log"),
-					Size:        10,
-					Backups:     3,
-					ChannelSize: 100,
-					Discard:     false,
-				},
 			}
 
 			log, closer, err := logger.Logger(cfg)
@@ -96,13 +87,8 @@ var _ = Describe("Logger Package", func() {
 			logger.Package(injector)
 			// Manually put config so newService passes
 			do.OverrideValue(injector, logger.Config{
-				Level: "debug",
-				File: logger.FileConfig{
-					Name:        filepath.Join(os.TempDir(), "di.log"),
-					Size:        100,
-					Backups:     1,
-					ChannelSize: 100,
-				},
+				Level:  "debug",
+				Caller: 1,
 			})
 
 			log, err := do.Invoke[*slog.Logger](injector)

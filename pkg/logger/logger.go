@@ -22,7 +22,7 @@ func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
 	pLog := phuslog.Logger{
 		Level:  level,
 		Caller: cfg.Caller,
-		Writer: LogWriter(cfg.File),
+		Writer: LogWriter(),
 	}
 	phusProvider := &phuslogotel.LoggerProvider{Log: pLog}
 
@@ -38,29 +38,13 @@ func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
 	return slog.New(handler), closer, nil
 }
 
-func LogWriter(cfg FileConfig) phuslog.Writer {
+func LogWriter() phuslog.Writer {
 	writers := phuslog.MultiEntryWriter{
 		&phuslog.ConsoleWriter{
 			ColorOutput:    true,
 			QuoteString:    true,
 			EndWithMessage: true,
 		},
-	}
-
-	if cfg.Name != "" {
-		writers = append(writers, &phuslog.AsyncWriter{
-			ChannelSize:   cfg.ChannelSize,
-			DiscardOnFull: cfg.Discard,
-			Writer: &phuslog.FileWriter{
-				Filename:     cfg.Name,
-				EnsureFolder: true,
-
-				MaxSize:    cfg.Size,
-				FileMode:   0600,
-				MaxBackups: cfg.Backups,
-				LocalTime:  false,
-			},
-		})
 	}
 	return &writers
 }
