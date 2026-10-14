@@ -26,9 +26,9 @@ func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
 	}
 	phusProvider := &phuslogotel.LoggerProvider{Log: pLog}
 
-	consoleHandler := otelslog.NewHandler("logger", otelslog.WithLoggerProvider(phusProvider))
+	consoleHandler := otelslog.NewHandler("", otelslog.WithLoggerProvider(phusProvider))
 
-	otlpHandler := otelslog.NewHandler("logger")
+	otlpHandler := otelslog.NewHandler("")
 
 	handler := slog.NewMultiHandler(consoleHandler, otlpHandler)
 	closer, ok := pLog.Writer.(io.Closer)
