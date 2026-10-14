@@ -153,100 +153,246 @@ tasks:
       - docker compose logs -f
 
  # ── Kubernetes (minikube) ─────────────────────────────────────────────────
-
+ # ── Minikube & Кластер ──────────────────────────────────────────────────
   k8s:start:
-    desc: Start 
+    desc: Start Minikube cluster
     vars:
       CPUS: '{{.CPUS | default "8"}}'
       MEMORY: '{{.MEMORY | default "6144"}}'
     cmds:
       - minikube start --driver=docker --cpus={{.CPUS}} --memory={{.MEMORY}}
 
-  k8s:load:
-    desc: Build images and load them into minikube
+  k8s:stop:
+    desc: Stop Minikube cluster (preserves data)
+    cmds:
+      - minikube stop
+
+  k8s:destroy:
+    desc: Delete Minikube cluster completely
+    cmds:
+      - minikube delete
+
+  k8s:tunnel:
+    desc: Open Minikube network tunnel (keep open in separate terminal)
+    cmds:
+      - minikube tunnel
+
+  k8s:images:load:
+    desc: Build Docker images and load them into Minikube
     cmds:
       - task: docker:build
       - minikube image load --overwrite=true slotify-backend:{{.BACKEND_VERSION}}
       - minikube image load --overwrite=true slotify-frontend:{{.FRONTEND_VERSION}}
-  k8s:load:delete:
-    desc: Delete images from minikube
+
+  k8s:images:clean:
+    desc: Remove local application images from Minikube
     cmds:
       - minikube image rm slotify-backend:{{.BACKEND_VERSION}}
       - minikube image rm slotify-frontend:{{.FRONTEND_VERSION}}
 
-  k8s:apply:
-    desc: Apply all manifests in order
+  k8s:pods:
+    desc: List pods across all active project namespaces
     cmds:
-      - kubectl apply -f k8s/namespace.yaml
-      - kubectl apply -f k8s/secret.yaml
-      - kubectl apply -f k8s/postgres.yaml
-      - kubectl rollout status statefulset/postgres -n slotify --timeout=120s
-      - kubectl apply -f k8s/backend.yaml
-      - kubectl apply -f k8s/frontend.yaml
-      - kubectl apply -f k8s/ingress.yaml
+      - kubectl get pods -n traefik -o wide
+      - kubectl get pods -n metrics -o wide
+      - kubectl get pods -n storage -o wide
+      - kubectl get pods -n slotify -o wide
 
-  k8s:deploy:
-    desc: Build, load images into minikube and deploy the app
+  k8s:pods:watch:
+    desc: Live watch pods status in slotify namespace
     cmds:
-      - task: k8s:load
-      - task: k8s:apply
+      - kubectl get pods -n slotify -o wide -w
   
-  k8s:deploy:start:full:
-    desc: Start minikube, build, load images into minikube and deploy the app
+  k8s:logs:prev:
+    desc: "Show logs from previous (crashed) container instance (usage: task k8s:logs:prev ID=<pod-name> [NS=slotify])"
+    vars:
+      ID: '{{.ID | default .POD}}'
+      NS: '{{.NS | default "slotify"}}'
     cmds:
-      - task: k8s:start
-      - task: k8s:traefik
-      - task: k8s:deploy
-
-  k8s:status:
-    desc: Show pods and services in slotify namespace
+      - kubectl logs {{.ID}} -n {{.NS}} --previous
+  
+  k8s:logs:
+    desc: "Show logs from container instance (usage: task k8s:logs ID=<pod-name> [NS=slotify])"
+    vars:
+      ID: '{{.ID | default .POD}}'
+      NS: '{{.NS | default "slotify"}}'
     cmds:
-      - kubectl get pods,svc -n slotify
+      - kubectl logs {{.ID}} -n {{.NS}}
+  
+  # ── Helm: Traefik (namespace: traefik) ──────────────────────────────────
 
-  k8s:scale:
-    desc: "Scale app deployment (usage: task k8s:scale REPLICAS=3)"
+  helm:traefik:apply:
+    desc: Install or update Traefik Ingress Controller
+    cmds:
+      - helm repo add traefik https://traefik.github.io/charts
+      - helm repo update traefik
+      - |
+        helm upgrade --install traefik traefik/traefik \
+          -n traefik --create-namespace \
+          --wait --timeout 5m
+
+  helm:traefik:uninstall:
+    desc: Remove Traefik Ingress Controller
+    cmds:
+      - helm uninstall traefik -n traefik
+  # ── Helm: Metrics Stack (namespace: metrics) ────────────────────────────
+
+  helm:metrics:deps:
+    desc: Update dependencies for metrics chart
+    cmds:
+      - helm dependency update helm/metrics
+
+  helm:metrics:template:
+    desc: Render metrics manifests
+    cmds:
+      - helm template metrics helm/metrics -n metrics --debug
+
+  helm:metrics:apply:
+    desc: Deploy VictoriaLogs and OpenTelemetry Collector
+    cmds:
+      - |
+        helm upgrade --install metrics helm/metrics \
+          -n metrics --create-namespace \
+          --wait --timeout 5m
+
+  helm:metrics:uninstall:
+    desc: Remove metrics stack
+    cmds:
+      - helm uninstall metrics -n metrics
+  
+  helm:metrics:logs:collector:
+    desc: Follow VictoriaLogs and OpenTelemetry Collector logs
+    vars:
+      N: '{{.N | default 100}}'
+    cmds:
+      - kubectl logs -n metrics deployment/otel-collector --tail={{.N}}
+
+  # ── Helm: Slotify Application (namespace: slotify) ──────────────────────
+
+  helm:slotify:template:
+    desc: Render slotify application manifests
+    cmds:
+      - |
+        helm template slotify helm/slotify \
+          -n slotify \
+          --debug \
+          -f helm/slotify/values.yaml \
+          --set backend.tag={{.BACKEND_VERSION}} \
+          --set frontend.tag={{.FRONTEND_VERSION}}
+
+  helm:slotify:apply:
+    desc: Deploy slotify application via Helm
+    cmds:
+      - |
+        helm upgrade --install slotify helm/slotify \
+          -n slotify --create-namespace \
+          -f helm/slotify/values.yaml \
+          --set backend.tag={{.BACKEND_VERSION}} \
+          --set frontend.tag={{.FRONTEND_VERSION}} \
+          --wait --timeout 5m
+
+  helm:slotify:uninstall:
+    desc: Remove slotify application Helm release
+    cmds:
+      - helm uninstall slotify -n slotify
+
+  # ── Kubernetes: Управление и отладка (namespace: slotify) ───────────────
+
+  k8s:slotify:status:
+    desc: Show pods, services and statefulsets in slotify namespace
+    cmds:
+      - kubectl get pods,svc,sts,pvc -n slotify
+
+  k8s:slotify:logs:
+    desc: Follow backend application logs
+    vars:
+      REPLICAS: '{{.REPLICAS | default "3"}}'
+    cmds:
+      - kubectl logs -f deployment/slotify-backend -n slotify --all-pods=true --prefix=true
+
+  k8s:slotify:scale:
+    desc: "Scale backend deployment (usage: task k8s:slotify:scale REPLICAS=3)"
     vars:
       REPLICAS: '{{.REPLICAS | default "3"}}'
     cmds:
       - kubectl scale deployment slotify-backend --replicas={{.REPLICAS}} -n slotify
 
-  k8s:logs:
-    desc: Follow app logs
-    cmds:
-      - kubectl logs -f deployment/slotify-backend -n slotify --all-pods=true --prefix=true
-
-  k8s:pods:
-    desc: Show all pods
-    cmds:
-      - kubectl get pods -n traefik -o wide
-      - kubectl get pods -n slotify -o wide
-  k8s:pods:w:
-    desc: Show all pods
-    cmds:
-      - kubectl get pods -n slotify -o wide -w
-
-  k8s:delete:
-    desc: Delete the slotify namespace with all resources
+  k8s:slotify:clean:
+    desc: Delete the slotify namespace and all its resources
     cmds:
       - kubectl delete namespace slotify --ignore-not-found
-    
-  k8s:traefik:
-    desc: Install Traefik via Helm
-    cmds:
-      - helm repo add traefik https://traefik.github.io/charts
-      - helm repo update
-      - helm upgrade --install traefik traefik/traefik -n traefik --create-namespace
 
-  k8s:tunnel:
-    desc: Run minikube tunnel (keep running, may need admin rights)
+  # ── Helm: Storage / PostgreSQL (namespace: storage) ─────────────────────
+
+  helm:storage:deps:
+    desc: Download and update Helm chart dependencies (Bitnami PostgreSQL)
     cmds:
-      - minikube tunnel
+      - helm dependency update helm/storage
+
+  helm:storage:template:
+    desc: Render storage manifests for debugging
+    cmds:
+      - |
+        helm template storage helm/storage \
+          -n storage \
+          --debug \
+          -f helm/storage/values.yaml
+
+  helm:storage:apply:
+    desc: Deploy PostgreSQL storage via Helm
+    cmds:
+      - |
+        helm upgrade --install storage helm/storage \
+          -n storage --create-namespace \
+          -f helm/storage/values.yaml \
+          --wait --timeout 5m
+
+  helm:storage:uninstall:
+    desc: Remove PostgreSQL storage Helm release
+    cmds:
+      - helm uninstall storage -n storage
+
+  # ── Kubernetes: Управление и отладка (namespace: storage) ───────────────
+
+  k8s:storage:status:
+    desc: Show pods, services, statefulsets and PVCs in storage namespace
+    cmds:
+      - kubectl get pods,svc,sts,pvc -n storage
+
+  k8s:storage:logs:
+    desc: "Follow PostgreSQL logs (usage: task k8s:storage:logs [CONTAINER=postgresql|metrics])"
+    vars:
+      CONTAINER: '{{.CONTAINER | default "postgresql"}}'
+    cmds:
+      - kubectl logs -f statefulset/postgres -n storage -c {{.CONTAINER}}
+
+  k8s:storage:clean:
+    desc: Delete the storage namespace and all its resources (including PVCs)
+    cmds:
+      - kubectl delete namespace storage --ignore-not-found
+
+  # ── Сценарии комплексного деплоя ────────────────────────────────────────
+
+  k8s:deploy:slotify:
+    desc: Build, load images and deploy only the slotify application
+    cmds:
+      - task: k8s:images:load
+      - task: helm:slotify:apply
   
-  k8s:stop:
-    desc: Stop minikube, keep all data
+  k8s:deps:update:
+    desc: Build, load images and deploy only the metrics stack
     cmds:
-      - minikube stop
-  k8s:destroy:
-    desc: Delete the whole minikube cluster
+      - task: helm:metrics:deps
+      - task: helm:storage:deps
+      
+
+  k8s:deploy:full:
+    desc: Full cold start (Minikube -> Traefik -> Metrics -> Storage -> App)
     cmds:
-      - minikube delete
+      - task: k8s:start
+      - task: helm:traefik:apply
+      - task: helm:metrics:apply
+      - task: helm:storage:apply
+      - task: k8s:images:load
+      - task: helm:slotify:apply
+      - task: k8s:tunnel
