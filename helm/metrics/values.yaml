@@ -24,6 +24,13 @@ otelcollector:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: "postgres"
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["postgres-metrics.storage.svc:9187"]
     extensions:
       health_check:
     exporters:
@@ -42,5 +49,13 @@ otelcollector:
       pipelines:
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, batch]
+          processors: [memory_limiter, batch]
           exporters: [otlphttp/victorialogs, debug]
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]

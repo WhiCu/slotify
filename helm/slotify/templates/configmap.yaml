@@ -3,6 +3,10 @@ kind: ConfigMap
 metadata:
   name: slotify-app
   namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/resource-policy": keep
 data:
   APP_HTTP__CORS__ALLOWED_ORIGINS: {{ .Values.backend.allowedOrigins | quote }}
 
@@ -10,6 +14,7 @@ data:
   APP_STORAGE__PORT: {{ .Values.postgres.port | quote }}
   APP_STORAGE__NAME: {{ .Values.postgres.db | quote }}
   APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | quote }}
+  APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | default "true" | quote }}
 
   APP_TELEMETRY__ENABLED: {{ .Values.telemetry.enabled | quote }}
   APP_TELEMETRY__ENVIRONMENT: {{ .Values.telemetry.environment | quote }}

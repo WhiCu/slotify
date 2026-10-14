@@ -1,0 +1,38 @@
+postgresql:
+  fullnameOverride: "postgres"
+
+  auth:
+    username: postgres
+    password: postgres
+    database: slotify
+
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+
+    startupProbe:
+      enabled: true
+    
+  metrics:
+    enabled: true
+
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 150m
+        memory: 128Mi

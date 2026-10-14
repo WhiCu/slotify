@@ -29,14 +29,9 @@ frontend:
     limits:   { cpu: 200m, memory: 64Mi }
 
 postgres:
-  image: postgres:18-alpine
-  host: "postgres"
+  host: "postgres.storage.svc"
   port: "5432"
   user: postgres
   password: postgres
   db: slotify
   insecure: "true"
-  storage: 1Gi
-  resources:
-    requests: { cpu: 1000m, memory: 512Mi }
-    limits:   { cpu: 2000m, memory: 1Gi }
