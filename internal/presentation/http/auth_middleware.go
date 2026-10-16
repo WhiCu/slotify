@@ -96,12 +96,14 @@ func (h *SecurityHandler) HandleBearerAuth(ctx context.Context, op api.Operation
 		return ctx, ErrForbidden
 	}
 
+	ctx = WithUserID(ctx, user.UserID(userID))
+	ctx = WithUserRole(ctx, role)
+
 	h.log.DebugContext(ctx, "request successfully authenticated",
 		slog.String("operation", op),
-		slog.String("user_id", userID.String()),
 	)
 
-	return WithUserID(ctx, user.UserID(userID)), nil
+	return ctx, nil
 }
 
 func roleAllowed(role user.Role, required []string) bool {

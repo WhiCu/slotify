@@ -15,6 +15,15 @@ import (
 	"github.com/whicu/slotify/internal/infrastructure/crypto"
 )
 
+func Logger(i do.Injector) (*slog.Logger, error) {
+	log, err := do.Invoke[*slog.Logger](i)
+	if err != nil {
+		return nil, err
+	}
+	log = log.With(slog.String("component", "http"))
+	return log, nil
+}
+
 func newConfig(i do.Injector) (Config, error) {
 	k, err := do.Invoke[*koanf.Koanf](i)
 	if err != nil {
@@ -25,7 +34,7 @@ func newConfig(i do.Injector) (Config, error) {
 }
 
 func newSecurityHandler(i do.Injector) (api.SecurityHandler, error) {
-	logger, err := do.Invoke[*slog.Logger](i)
+	logger, err := Logger(i)
 	if err != nil {
 		return nil, fmt.Errorf("http: invoke logger: %w", err)
 	}
@@ -37,7 +46,7 @@ func newSecurityHandler(i do.Injector) (api.SecurityHandler, error) {
 }
 
 func newHandler(i do.Injector) (api.Handler, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, fmt.Errorf("http: invoke logger: %w", err)
 	}
@@ -136,7 +145,7 @@ func newRouter(i do.Injector) (http.Handler, error) {
 		return nil, fmt.Errorf("http: invoke config: %w", err)
 	}
 
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, fmt.Errorf("http: invoke logger: %w", err)
 	}

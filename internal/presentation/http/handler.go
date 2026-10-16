@@ -124,7 +124,7 @@ func (h *Handler) GetUser(ctx context.Context, params api.GetUserParams) (api.Ge
 
 // ListUsers implements [api.Handler].
 func (h *Handler) ListUsers(ctx context.Context) (api.ListUsersRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.ListUsersUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -148,7 +148,7 @@ func (h *Handler) ListUsers(ctx context.Context) (api.ListUsersRes, error) {
 
 // UpdateUserRole implements [api.Handler].
 func (h *Handler) UpdateUserRole(ctx context.Context, req *api.UpdateRoleRequest, params api.UpdateUserRoleParams) (api.UpdateUserRoleRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.UpdateUserRoleUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -171,7 +171,7 @@ func (h *Handler) UpdateUserRole(ctx context.Context, req *api.UpdateRoleRequest
 
 // DeleteUser implements [api.Handler].
 func (h *Handler) DeleteUser(ctx context.Context, params api.DeleteUserParams) (api.DeleteUserRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.DeleteUserUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -193,7 +193,7 @@ func (h *Handler) DeleteUser(ctx context.Context, params api.DeleteUserParams) (
 
 // CreateSpace implements [api.Handler].
 func (h *Handler) CreateSpace(ctx context.Context, req *api.CreateSpaceRequest) (api.CreateSpaceRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.CreateSpaceUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -276,7 +276,7 @@ func (h *Handler) ListSpaces(
 
 // UpdateSpace implements [api.Handler].
 func (h *Handler) UpdateSpace(ctx context.Context, req *api.UpdateSpaceRequest, params api.UpdateSpaceParams) (api.UpdateSpaceRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.UpdateSpaceUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -311,7 +311,7 @@ func (h *Handler) UpdateSpace(ctx context.Context, req *api.UpdateSpaceRequest, 
 
 // DeleteSpace implements [api.Handler].
 func (h *Handler) DeleteSpace(ctx context.Context, params api.DeleteSpaceParams) (api.DeleteSpaceRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.DeleteSpaceUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -329,7 +329,7 @@ func (h *Handler) DeleteSpace(ctx context.Context, params api.DeleteSpaceParams)
 
 // DeactivateSpace implements [api.Handler].
 func (h *Handler) DeactivateSpace(ctx context.Context, params api.DeactivateSpaceParams) (api.DeactivateSpaceRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.DeactivateSpaceUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -351,7 +351,7 @@ func (h *Handler) DeactivateSpace(ctx context.Context, params api.DeactivateSpac
 
 // CreateBooking implements [api.Handler].
 func (h *Handler) CreateBooking(ctx context.Context, req *api.CreateBookingRequest) (api.CreateBookingRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.CreateBookingUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -386,7 +386,7 @@ func (h *Handler) CreateBooking(ctx context.Context, req *api.CreateBookingReque
 
 // CancelBooking implements [api.Handler].
 func (h *Handler) CancelBooking(ctx context.Context, req *api.CancelBookingRequest) (api.CancelBookingRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.CancelBookingUnauthorized{Error: "unauthenticated"}, nil
 	}
@@ -404,7 +404,7 @@ func (h *Handler) CancelBooking(ctx context.Context, req *api.CancelBookingReque
 
 // ListMyBookings implements [api.Handler].
 func (h *Handler) ListMyBookings(ctx context.Context) (api.ListMyBookingsRes, error) {
-	actorID, ok := userIDFromContext(ctx)
+	actorID, ok := UserIDFromContext(ctx)
 	if !ok {
 		return &api.Error{Error: "unauthenticated"}, nil
 	}
