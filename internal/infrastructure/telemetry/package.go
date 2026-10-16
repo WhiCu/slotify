@@ -9,7 +9,6 @@ import (
 	"github.com/whicu/slotify/internal/config"
 	"github.com/whicu/slotify/pkg/errkit"
 	"go.opentelemetry.io/otel"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -19,7 +18,6 @@ import (
 type Service struct {
 	tp   *sdktrace.TracerProvider
 	mp   *sdkmetric.MeterProvider
-	lp   *sdklog.LoggerProvider
 	conn *grpc.ClientConn
 }
 
@@ -41,15 +39,6 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	g.Go(func() error {
 		if err := s.mp.Shutdown(ctx); err != nil {
 			err = fmt.Errorf("failed to shutdown meter provider: %w", err)
-			otel.Handle(err)
-			return err
-		}
-		return nil
-	})
-
-	g.Go(func() error {
-		if err := s.lp.Shutdown(ctx); err != nil {
-			err = fmt.Errorf("failed to shutdown logger provider: %w", err)
 			otel.Handle(err)
 			return err
 		}
@@ -135,16 +124,11 @@ func newTelemetry(i do.Injector) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to init meter provider: %w", err)
 	}
-
-	lp, err := InitLoggerProvider(ctx, cfg, res, conn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init logger provider: %w", err)
-	}
 	if errRM := InitRuntimeMetrics(); errRM != nil {
 		return nil, errRM
 	}
 
-	return &Service{tp: tp, mp: mp, lp: lp, conn: conn}, nil
+	return &Service{tp: tp, mp: mp, conn: conn}, nil
 }
 
 var Package = do.Package(
