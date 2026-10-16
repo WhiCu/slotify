@@ -7,9 +7,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
+)
+
+var (
+	tracer = meta.Tracer
+	meter  = meta.Meter
 )
 
 type IDGenerator interface {
@@ -83,7 +92,18 @@ type CreateUserOutput struct {
 func (c *CreateUser) Execute(
 	ctx context.Context,
 	in CreateUserInput,
-) (*CreateUserOutput, error) {
+) (output *CreateUserOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "user", "create")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "CreateUser.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "user"),
+			attribute.String("usecase", "create"),
+		),
+	)
+	defer span.End()
+
 	c.log.DebugContext(ctx, "executing create user")
 
 	var (
@@ -92,7 +112,7 @@ func (c *CreateUser) Execute(
 		createdAt time.Time
 	)
 
-	err := c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		if err := c.rootLocker.LockRootCreation(ctx); err != nil {
 			return err
 		}
@@ -138,13 +158,19 @@ func (c *CreateUser) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
+	span.SetAttributes(
+		attribute.String("user.id", id.String()),
+		attribute.String("user.role", role.String()),
+	)
 
 	c.log.InfoContext(
 		ctx,
 		"user created",
-		slog.String("user_id", id.String()),
+		slog.String("created_user_id", id.String()),
 		slog.String("role", role.String()),
 	)
 
@@ -153,16 +179,19 @@ func (c *CreateUser) Execute(
 		"role":    role.String(),
 	}, c.ttl)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("issue token: %w", err)
 	}
 
 	c.log.DebugContext(
 		ctx,
 		"issued token for user",
-		slog.String("user_id", id.String()),
+		slog.String("created_user_id", id.String()),
 		slog.String("role", role.String()),
-		slog.Int64("ttl_seconds", c.ttl.Nanoseconds()),
+		slog.Int64("ttl", c.ttl.Nanoseconds()),
 	)
+	span.SetStatus(codes.Ok, "user successfully created")
 
 	return &CreateUserOutput{
 		ID:        id,

@@ -8,6 +8,11 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
@@ -59,7 +64,20 @@ type UpdateRoleOutput struct {
 func (u *UpdateRole) Execute(
 	ctx context.Context,
 	in UpdateRoleInput,
-) (*UpdateRoleOutput, error) {
+) (output *UpdateRoleOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "user", "update_role")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "UpdateRole.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "user"),
+			attribute.String("usecase", "update_role"),
+			attribute.String("target_user_id", in.TargetUserID.String()),
+			attribute.String("actor_id", in.ActorID.String()),
+			attribute.String("new_role", in.NewRole),
+		),
+	)
+	defer span.End()
 	u.log.DebugContext(
 		ctx,
 		"executing update role",
@@ -70,6 +88,8 @@ func (u *UpdateRole) Execute(
 
 	newRole, err := domainuser.RoleFromString(in.NewRole)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, domain.ErrInvalidArgument(err)
 	}
 
@@ -102,6 +122,8 @@ func (u *UpdateRole) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
@@ -113,6 +135,11 @@ func (u *UpdateRole) Execute(
 		slog.String("actor_id", in.ActorID.String()),
 		slog.Time("created_at", target.CreatedAt()),
 	)
+	span.SetAttributes(
+		attribute.String("user.id", target.ID().String()),
+		attribute.String("user.role", target.Role().String()),
+	)
+	span.SetStatus(codes.Ok, "user role successfully updated")
 
 	return &UpdateRoleOutput{
 		ID:        target.ID(),

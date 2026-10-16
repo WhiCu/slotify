@@ -6,6 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
@@ -61,7 +66,20 @@ type DeactivateSpaceInput struct {
 func (d *DeactivateSpace) Execute(
 	ctx context.Context,
 	in DeactivateSpaceInput,
-) error {
+) (err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "space", "deactivate")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "DeactivateSpace.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "space"),
+			attribute.String("usecase", "deactivate"),
+			attribute.String("space_id", in.SpaceID.String()),
+			attribute.String("actor_id", in.ActorID.String()),
+		),
+	)
+	defer span.End()
+
 	d.log.DebugContext(
 		ctx,
 		"executing deactivate space",
@@ -69,7 +87,7 @@ func (d *DeactivateSpace) Execute(
 		slog.String("actor_id", in.ActorID.String()),
 	)
 
-	err := d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		actor, err := d.users.FindByIDForUpdate(ctx, in.ActorID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -104,6 +122,8 @@ func (d *DeactivateSpace) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
@@ -113,6 +133,7 @@ func (d *DeactivateSpace) Execute(
 		slog.String("space_id", in.SpaceID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
+	span.SetStatus(codes.Ok, "space successfully deactivated")
 
 	return nil
 }

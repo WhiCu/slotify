@@ -7,6 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
@@ -43,7 +48,18 @@ type GetUserOutput struct {
 func (g *GetUser) Execute(
 	ctx context.Context,
 	id domainuser.UserID,
-) (*GetUserOutput, error) {
+) (output *GetUserOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "user", "get")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "GetUser.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "user"),
+			attribute.String("usecase", "get"),
+			attribute.String("user_id", id.String()),
+		),
+	)
+	defer span.End()
 	g.log.DebugContext(
 		ctx,
 		"executing get user",
@@ -53,11 +69,21 @@ func (g *GetUser) Execute(
 	u, err := g.users.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
+			span.RecordError(ErrUserNotFound)
+			span.SetStatus(codes.Error, ErrUserNotFound.Error())
 			return nil, ErrUserNotFound
 		}
 
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("find user: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("user.id", u.ID().String()),
+		attribute.String("user.role", u.Role().String()),
+	)
+	span.SetStatus(codes.Ok, "user successfully retrieved")
 
 	return &GetUserOutput{
 		ID:        u.ID(),

@@ -7,6 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 )
@@ -45,7 +50,18 @@ type GetSpaceOutput struct {
 func (g *GetSpace) Execute(
 	ctx context.Context,
 	id domainspace.SpaceID,
-) (*GetSpaceOutput, error) {
+) (output *GetSpaceOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "space", "get")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "GetSpace.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "space"),
+			attribute.String("usecase", "get"),
+			attribute.String("space_id", id.String()),
+		),
+	)
+	defer span.End()
 	g.log.DebugContext(
 		ctx,
 		"executing get space",
@@ -55,11 +71,23 @@ func (g *GetSpace) Execute(
 	s, err := g.spaces.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
+			span.RecordError(ErrSpaceNotFound)
+			span.SetStatus(codes.Error, ErrSpaceNotFound.Error())
 			return nil, ErrSpaceNotFound
 		}
 
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("find space: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("space.name", s.Name()),
+		attribute.String("space.type", s.Type().String()),
+		attribute.Int("space.capacity", s.Capacity()),
+		attribute.Bool("space.active", s.IsActive()),
+	)
+	span.SetStatus(codes.Ok, "space successfully retrieved")
 
 	return &GetSpaceOutput{
 		ID:        s.ID(),

@@ -7,6 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
@@ -71,7 +76,20 @@ type DeleteUserInput struct {
 func (d *DeleteUser) Execute(
 	ctx context.Context,
 	in DeleteUserInput,
-) error {
+) (err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "user", "delete")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "DeleteUser.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "user"),
+			attribute.String("usecase", "delete"),
+			attribute.String("target_user_id", in.TargetUserID.String()),
+			attribute.String("actor_id", in.ActorID.String()),
+		),
+	)
+	defer span.End()
+
 	d.log.DebugContext(
 		ctx,
 		"executing delete user",
@@ -80,10 +98,12 @@ func (d *DeleteUser) Execute(
 	)
 
 	if in.TargetUserID == in.ActorID {
+		span.RecordError(ErrCannotDeleteSelf)
+		span.SetStatus(codes.Error, ErrCannotDeleteSelf.Error())
 		return ErrCannotDeleteSelf
 	}
 
-	err := d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = d.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		d.log.DebugContext(
 			ctx,
 			"start of delete user transaction",
@@ -121,6 +141,8 @@ func (d *DeleteUser) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		d.log.WarnContext(
 			ctx,
 			"delete user failed",
@@ -137,6 +159,7 @@ func (d *DeleteUser) Execute(
 		slog.String("target_user_id", in.TargetUserID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
+	span.SetStatus(codes.Ok, "user successfully deleted")
 
 	return nil
 }

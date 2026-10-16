@@ -7,9 +7,20 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
+)
+
+var (
+	tracer = meta.Tracer
+	meter  = meta.Meter
 )
 
 var (
@@ -43,6 +54,9 @@ type CreateSpace struct {
 	users      CreateSpaceUserFinder
 	spaces     CreateSpaceSaver
 	transactor Transactor
+
+	// metrics
+	capacityAdded metric.Int64Counter
 }
 
 func NewCreateSpace(
@@ -52,12 +66,22 @@ func NewCreateSpace(
 	spaces CreateSpaceSaver,
 	transactor Transactor,
 ) *CreateSpace {
+	capacityAdded, err := meter.Int64Counter(
+		"slotify.space.capacity.added",
+		metric.WithDescription("Total capacity of spaces added to the system"),
+		metric.WithUnit("{seat}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &CreateSpace{
-		log:        log,
-		ids:        ids,
-		users:      users,
-		spaces:     spaces,
-		transactor: transactor,
+		log:           log,
+		ids:           ids,
+		users:         users,
+		spaces:        spaces,
+		transactor:    transactor,
+		capacityAdded: capacityAdded,
 	}
 }
 
@@ -80,7 +104,21 @@ type CreateSpaceOutput struct {
 func (c *CreateSpace) Execute(
 	ctx context.Context,
 	in CreateSpaceInput,
-) (*CreateSpaceOutput, error) {
+) (output *CreateSpaceOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "space", "create")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "CreateSpace.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "space"),
+			attribute.String("usecase", "create"),
+			attribute.String("name", in.Name),
+			attribute.String("actor_id", in.ActorID.String()),
+			attribute.String("space_type", in.Type),
+			attribute.Int("capacity", in.Capacity),
+		),
+	)
+	defer span.End()
 	c.log.DebugContext(
 		ctx,
 		"executing create space",
@@ -90,6 +128,8 @@ func (c *CreateSpace) Execute(
 
 	spaceType, err := domainspace.TypeFromString(in.Type)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, domain.ErrInvalidArgument(err)
 	}
 
@@ -137,6 +177,8 @@ func (c *CreateSpace) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
@@ -146,6 +188,15 @@ func (c *CreateSpace) Execute(
 		slog.String("space_id", out.ID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
+	span.SetAttributes(
+		attribute.String("space.id", out.ID.String()),
+		attribute.String("space.type", out.Type),
+		attribute.Int("space.capacity", out.Capacity),
+		attribute.Bool("space.active", out.Active),
+	)
+	span.SetStatus(codes.Ok, "space successfully created")
+
+	c.capacityAdded.Add(ctx, int64(out.Capacity))
 
 	return &out, nil
 }

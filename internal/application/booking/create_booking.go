@@ -8,12 +8,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
+
+var tracer = meta.Tracer
+var meter = meta.Meter
 
 var (
 	ErrSpaceNotFound    = errors.New("application/booking: space not found")
@@ -70,6 +78,10 @@ type CreateBooking struct {
 	reservations CreateBookingConflictChecker
 	saver        CreateBookingSaver
 	transactor   Transactor
+
+	// metrics
+	slotsBooked     metric.Int64Counter
+	slotsPerBooking metric.Int64Histogram
 }
 
 func NewCreateBooking(
@@ -81,14 +93,35 @@ func NewCreateBooking(
 	saver CreateBookingSaver,
 	transactor Transactor,
 ) *CreateBooking {
+
+	slotsBooked, err := meter.Int64Counter(
+		"slotify.booking.slots.booked",
+		metric.WithDescription("Total number of reserved slots"),
+		metric.WithUnit("{slot}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	slotsPerBooking, err := meter.Int64Histogram(
+		"slotify.booking.slots_per_booking",
+		metric.WithDescription("Number of slots reserved by a single booking request"),
+		metric.WithUnit("{slot}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &CreateBooking{
-		log:          log,
-		ids:          ids,
-		users:        users,
-		spaces:       spaces,
-		reservations: reservations,
-		saver:        saver,
-		transactor:   transactor,
+		log:             log,
+		ids:             ids,
+		users:           users,
+		spaces:          spaces,
+		reservations:    reservations,
+		saver:           saver,
+		transactor:      transactor,
+		slotsBooked:     slotsBooked,
+		slotsPerBooking: slotsPerBooking,
 	}
 }
 
@@ -112,7 +145,22 @@ type CreateBookingOutput struct {
 func (c *CreateBooking) Execute(
 	ctx context.Context,
 	in CreateBookingInput,
-) (*CreateBookingOutput, error) {
+) (output *CreateBookingOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "booking", "create")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "CreateBooking.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "booking"),
+			attribute.String("usecase", "create"),
+			attribute.String("space_id", in.SpaceID.String()),
+			attribute.String("user_id", in.UserID.String()),
+			attribute.String("date", in.Date.String()),
+			attribute.Int("start_slot", in.StartSlot),
+			attribute.Int("end_slot", in.EndSlot),
+		),
+	)
+	defer span.End()
 	c.log.DebugContext(
 		ctx,
 		"executing create booking",
@@ -123,21 +171,29 @@ func (c *CreateBooking) Execute(
 	)
 
 	if in.StartSlot > in.EndSlot {
-		return nil, domain.ErrInvalidArgument(
-			fmt.Errorf("start_slot (%d) must be <= end_slot (%d)", in.StartSlot, in.EndSlot),
-		)
+		err := fmt.Errorf("start_slot (%d) must be <= end_slot (%d)", in.StartSlot, in.EndSlot)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, domain.ErrInvalidArgument(err)
 	}
 
 	if in.People < 0 {
-		return nil, domain.ErrInvalidArgument(errors.New("people must be non-negative"))
+		err := errors.New("people must be non-negative")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, domain.ErrInvalidArgument(err)
 	}
 
 	slots, err := buildSlotRange(in.StartSlot, in.EndSlot)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
 	if len(slots) == 0 {
+		span.RecordError(ErrNoSlots)
+		span.SetStatus(codes.Error, ErrNoSlots.Error())
 		return nil, ErrNoSlots
 	}
 
@@ -150,6 +206,8 @@ func (c *CreateBooking) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
@@ -160,6 +218,14 @@ func (c *CreateBooking) Execute(
 		slog.String("user_id", in.UserID.String()),
 		slog.Int("slots_count", len(slots)),
 	)
+	span.SetAttributes(
+		attribute.Int("slots.count", len(slots)),
+		attribute.Int("reservations.count", len(reservationIDs)),
+	)
+	span.SetStatus(codes.Ok, "booking successfully created")
+
+	c.slotsBooked.Add(ctx, int64(len(slots)))
+	c.slotsPerBooking.Record(ctx, int64(len(slots)))
 
 	return &CreateBookingOutput{
 		ReservationIDs: reservationIDs,

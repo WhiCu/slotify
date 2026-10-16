@@ -7,6 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
@@ -73,7 +78,20 @@ type UpdateSpaceOutput struct {
 func (u *UpdateSpace) Execute(
 	ctx context.Context,
 	in UpdateSpaceInput,
-) (*UpdateSpaceOutput, error) {
+) (output *UpdateSpaceOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "space", "update")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "UpdateSpace.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "space"),
+			attribute.String("usecase", "update"),
+			attribute.String("space_id", in.SpaceID.String()),
+			attribute.String("actor_id", in.ActorID.String()),
+		),
+	)
+	defer span.End()
+
 	u.log.DebugContext(
 		ctx,
 		"executing update space",
@@ -83,7 +101,7 @@ func (u *UpdateSpace) Execute(
 
 	var out UpdateSpaceOutput
 
-	err := u.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = u.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		actor, err := u.users.FindByIDForUpdate(ctx, in.ActorID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -135,6 +153,8 @@ func (u *UpdateSpace) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
@@ -144,6 +164,12 @@ func (u *UpdateSpace) Execute(
 		slog.String("space_id", out.ID.String()),
 		slog.String("actor_id", in.ActorID.String()),
 	)
+	span.SetAttributes(
+		attribute.String("space.name", out.Name),
+		attribute.Int("space.capacity", out.Capacity),
+		attribute.Bool("space.active", out.Active),
+	)
+	span.SetStatus(codes.Ok, "space successfully updated")
 
 	return &out, nil
 }

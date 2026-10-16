@@ -7,6 +7,12 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
 )
@@ -31,6 +37,9 @@ type ListUsers struct {
 	users      ListUsersFinder
 	lister     ListUsersLister
 	transactor Transactor
+
+	// metrics
+	usersListed metric.Int64Histogram
 }
 
 func NewListUsers(
@@ -39,11 +48,21 @@ func NewListUsers(
 	lister ListUsersLister,
 	transactor Transactor,
 ) *ListUsers {
+	usersListed, err := meter.Int64Histogram(
+		"slotify.user.list.count",
+		metric.WithDescription("Number of users returned in user list query"),
+		metric.WithUnit("{user}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &ListUsers{
-		log:        log,
-		users:      users,
-		lister:     lister,
-		transactor: transactor,
+		log:         log,
+		users:       users,
+		lister:      lister,
+		transactor:  transactor,
+		usersListed: usersListed,
 	}
 }
 
@@ -60,7 +79,19 @@ type ListUsersOutput struct {
 func (l *ListUsers) Execute(
 	ctx context.Context,
 	actorID domainuser.UserID,
-) (*ListUsersOutput, error) {
+) (output *ListUsersOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "user", "list")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "ListUsers.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "user"),
+			attribute.String("usecase", "list"),
+			attribute.String("actor_id", actorID.String()),
+		),
+	)
+	defer span.End()
+
 	l.log.DebugContext(
 		ctx,
 		"executing list users",
@@ -69,7 +100,7 @@ func (l *ListUsers) Execute(
 
 	var users []*domainuser.User
 
-	err := l.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = l.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		actor, err := l.users.FindByIDForUpdate(ctx, actorID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -92,6 +123,8 @@ func (l *ListUsers) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
@@ -111,6 +144,10 @@ func (l *ListUsers) Execute(
 		slog.String("actor_id", actorID.String()),
 		slog.Int("count", len(items)),
 	)
+	span.SetAttributes(attribute.Int("users.count", len(items)))
+	span.SetStatus(codes.Ok, "users successfully listed")
+
+	l.usersListed.Record(ctx, int64(len(items)))
 
 	return &ListUsersOutput{
 		Users: items,

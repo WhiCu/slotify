@@ -8,6 +8,12 @@ import (
 	"log/slog"
 	"slices"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	"github.com/whicu/slotify/internal/domain"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
@@ -52,6 +58,9 @@ type CancelBooking struct {
 	reservations CancelBookingFinder
 	deleter      CancelBookingDeleter
 	transactor   Transactor
+
+	// metrics
+	cancelledSlots metric.Int64Counter
 }
 
 func NewCancelBooking(
@@ -61,12 +70,22 @@ func NewCancelBooking(
 	deleter CancelBookingDeleter,
 	transactor Transactor,
 ) *CancelBooking {
+	cancelledSlots, err := meter.Int64Counter(
+		"slotify.booking.slots.cancelled",
+		metric.WithDescription("Total number of cancelled reservation slots"),
+		metric.WithUnit("{slot}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &CancelBooking{
-		log:          log,
-		users:        users,
-		reservations: reservations,
-		deleter:      deleter,
-		transactor:   transactor,
+		log:            log,
+		users:          users,
+		reservations:   reservations,
+		deleter:        deleter,
+		transactor:     transactor,
+		cancelledSlots: cancelledSlots,
 	}
 }
 
@@ -78,7 +97,20 @@ type CancelBookingInput struct {
 func (c *CancelBooking) Execute(
 	ctx context.Context,
 	in CancelBookingInput,
-) error {
+) (err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "booking", "cancel")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "CancelBooking.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "booking"),
+			attribute.String("usecase", "cancel"),
+			attribute.String("actor_id", in.ActorID.String()),
+			attribute.Int("reservations.count", len(in.ReservationIDs)),
+		),
+	)
+	defer span.End()
+
 	c.log.DebugContext(
 		ctx,
 		"executing cancel booking",
@@ -87,6 +119,8 @@ func (c *CancelBooking) Execute(
 	)
 
 	if len(in.ReservationIDs) == 0 {
+		span.RecordError(ErrCannotCancelEmpty)
+		span.SetStatus(codes.Error, ErrCannotCancelEmpty.Error())
 		return ErrCannotCancelEmpty
 	}
 
@@ -95,7 +129,7 @@ func (c *CancelBooking) Execute(
 		return bytes.Compare(a[:], b[:])
 	})
 
-	err := c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
+	err = c.transactor.RunInTransaction(ctx, func(ctx context.Context) error {
 		actor, err := c.users.FindByIDForUpdate(ctx, in.ActorID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -132,6 +166,8 @@ func (c *CancelBooking) Execute(
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
@@ -141,6 +177,9 @@ func (c *CancelBooking) Execute(
 		slog.String("actor_id", in.ActorID.String()),
 		slog.Int("cancelled_count", len(ids)),
 	)
+	span.SetStatus(codes.Ok, "booking successfully cancelled")
+
+	c.cancelledSlots.Add(ctx, int64(len(ids)))
 
 	return nil
 }

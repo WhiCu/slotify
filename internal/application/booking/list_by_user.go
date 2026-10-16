@@ -7,6 +7,12 @@ import (
 	"sort"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whicu/slotify/internal/application/meta"
 	domainbooking "github.com/whicu/slotify/internal/domain/booking"
 	domainspace "github.com/whicu/slotify/internal/domain/space"
 	domainuser "github.com/whicu/slotify/internal/domain/user"
@@ -22,15 +28,28 @@ type ListByUserFinder interface {
 type ListByUser struct {
 	log          *slog.Logger
 	reservations ListByUserFinder
+
+	// metrics
+	userBookingsRetrieved metric.Int64Histogram
 }
 
 func NewListByUser(
 	log *slog.Logger,
 	reservations ListByUserFinder,
 ) *ListByUser {
+	userBookingsRetrieved, err := meter.Int64Histogram(
+		"slotify.booking.user.bookings_count",
+		metric.WithDescription("Number of booking groups returned for user bookings list"),
+		metric.WithUnit("{booking}"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &ListByUser{
-		log:          log,
-		reservations: reservations,
+		log:                   log,
+		reservations:          reservations,
+		userBookingsRetrieved: userBookingsRetrieved,
 	}
 }
 
@@ -49,7 +68,18 @@ type ListByUserOutput struct {
 func (l *ListByUser) Execute(
 	ctx context.Context,
 	userID domainuser.UserID,
-) (*ListByUserOutput, error) {
+) (output *ListByUserOutput, err error) {
+	ctx, endObserve := meta.ObserveUseCase(ctx, "booking", "list_by_user")
+	defer func() { endObserve(err) }()
+
+	ctx, span := tracer.Start(ctx, "ListByUser.Execute",
+		trace.WithAttributes(
+			attribute.String("domain", "booking"),
+			attribute.String("usecase", "list_by_user"),
+			attribute.String("user_id", userID.String()),
+		),
+	)
+	defer span.End()
 	l.log.DebugContext(
 		ctx,
 		"executing list bookings by user",
@@ -58,6 +88,8 @@ func (l *ListByUser) Execute(
 
 	all, err := l.reservations.ListByUserID(ctx, userID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("list reservations: %w", err)
 	}
 
@@ -70,6 +102,13 @@ func (l *ListByUser) Execute(
 		slog.Int("groups", len(groups)),
 		slog.Int("total_slots", len(all)),
 	)
+	span.SetAttributes(
+		attribute.Int("groups.count", len(groups)),
+		attribute.Int("slots.count", len(all)),
+	)
+	span.SetStatus(codes.Ok, "bookings successfully listed by user")
+
+	l.userBookingsRetrieved.Record(ctx, int64(len(groups)))
 
 	return &ListByUserOutput{
 		Bookings: groups,

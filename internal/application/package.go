@@ -11,6 +11,15 @@ import (
 	"github.com/whicu/slotify/internal/config"
 )
 
+func Logger(i do.Injector) (*slog.Logger, error) {
+	log, err := do.Invoke[*slog.Logger](i)
+	if err != nil {
+		return nil, err
+	}
+	log = log.With(slog.String("component", "application"))
+	return log, nil
+}
+
 func newConfig(i do.Injector) (Config, error) {
 	k, err := do.Invoke[*koanf.Koanf](i)
 	if err != nil {
@@ -25,7 +34,7 @@ func newConfig(i do.Injector) (Config, error) {
 // =============================================================================
 
 func newCancelBooking(i do.Injector) (*booking.CancelBooking, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +63,7 @@ func newCancelBooking(i do.Injector) (*booking.CancelBooking, error) {
 }
 
 func newCreateBooking(i do.Injector) (*booking.CreateBooking, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +101,7 @@ func newCreateBooking(i do.Injector) (*booking.CreateBooking, error) {
 }
 
 func newGetBooking(i do.Injector) (*booking.GetBooking, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +115,7 @@ func newGetBooking(i do.Injector) (*booking.GetBooking, error) {
 }
 
 func newListBySpaceAndDate(i do.Injector) (*booking.ListBySpaceAndDate, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +129,7 @@ func newListBySpaceAndDate(i do.Injector) (*booking.ListBySpaceAndDate, error) {
 }
 
 func newListByUser(i do.Injector) (*booking.ListByUser, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +147,7 @@ func newListByUser(i do.Injector) (*booking.ListByUser, error) {
 // =============================================================================
 
 func newCreateSpace(i do.Injector) (*space.CreateSpace, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +175,7 @@ func newCreateSpace(i do.Injector) (*space.CreateSpace, error) {
 }
 
 func newGetSpace(i do.Injector) (*space.GetSpace, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +189,7 @@ func newGetSpace(i do.Injector) (*space.GetSpace, error) {
 }
 
 func newListSpaces(i do.Injector) (*space.ListSpaces, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +203,7 @@ func newListSpaces(i do.Injector) (*space.ListSpaces, error) {
 }
 
 func newUpdateSpace(i do.Injector) (*space.UpdateSpace, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +232,7 @@ func newUpdateSpace(i do.Injector) (*space.UpdateSpace, error) {
 }
 
 func newDeleteSpace(i do.Injector) (*space.DeleteSpace, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +261,7 @@ func newDeleteSpace(i do.Injector) (*space.DeleteSpace, error) {
 }
 
 func newDeactivateSpace(i do.Injector) (*space.DeactivateSpace, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +294,7 @@ func newDeactivateSpace(i do.Injector) (*space.DeactivateSpace, error) {
 // =============================================================================
 
 func newCreateUser(i do.Injector) (*user.CreateUser, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +338,7 @@ func newCreateUser(i do.Injector) (*user.CreateUser, error) {
 }
 
 func newGetUser(i do.Injector) (*user.GetUser, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +352,7 @@ func newGetUser(i do.Injector) (*user.GetUser, error) {
 }
 
 func newListUsers(i do.Injector) (*user.ListUsers, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +376,7 @@ func newListUsers(i do.Injector) (*user.ListUsers, error) {
 }
 
 func newUpdateRole(i do.Injector) (*user.UpdateRole, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +400,7 @@ func newUpdateRole(i do.Injector) (*user.UpdateRole, error) {
 }
 
 func newDeleteUser(i do.Injector) (*user.DeleteUser, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
