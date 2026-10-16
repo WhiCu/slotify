@@ -93,9 +93,19 @@ func cmdRun() error {
 			)
 
 			runCfg := di.Config{
-				CfgView:      cmd.Bool("cfg-view"),
-				Out:          os.Stdout,
-				UpMigrations: cmd.Bool("up-migrate"),
+				CfgView: cmd.Bool("cfg-view"),
+				Out:     os.Stdout,
+			}
+
+			if errBuild := di.Build(ctx, injector, runCfg); errBuild != nil {
+				return cli.Exit(errBuild, ExitSoftware)
+			}
+
+			if cmd.Bool("up-migrate") {
+				if errMigrate := di.UpMigrations(ctx, injector); errMigrate != nil {
+					return cli.Exit(errMigrate, ExitSoftware)
+				}
+				return nil
 			}
 
 			if errRun := di.Run(ctx, injector, runCfg); errRun != nil {
