@@ -10,3 +10,11 @@ dependencies:
     version: "*"
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     alias: otelcollector
+  - name: grafana
+    version: "*"
+    repository: https://grafana.github.io/helm-charts
+    alias: grafana
+  - name: jaeger
+    version: "*"
+    repository: https://jaegertracing.github.io/helm-charts
+    alias: jaeger

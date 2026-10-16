@@ -5,6 +5,13 @@ victorialogs:
   server:
     persistentVolume:
       size: 2Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
 
 # ── OpenTelemetry Collector ──────────────────────────────────────────────
 otelcollector:
@@ -13,6 +20,13 @@ otelcollector:
   mode: deployment
   image:
     repository: otel/opentelemetry-collector-contrib
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   presets:
     kubernetesAttributes:
       enabled: true
@@ -39,6 +53,10 @@ otelcollector:
       debug:
         verbosity: detailed
         sampling_initial: 5
+      otlp/jaeger:
+        endpoint: "jaeger:4317"
+        tls:
+          insecure: true
     processors:
       batch:
       memory_limiter:
@@ -58,4 +76,102 @@ otelcollector:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [debug]
+          exporters: [otlp/jaeger, debug]
+
+# ── Grafana ───────────────────────────────────────────────────────────────
+grafana:
+  enabled: true
+  fullnameOverride: "grafana"
+  adminPassword: "admin"
+  plugins:
+    - victoriametrics-logs-datasource
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: VictoriaLogs
+          uid: victorialogs
+          type: victoriametrics-logs-datasource
+          access: proxy
+          url: http://victoria-logs-server:9428
+          editable: true
+        - name: Jaeger
+          type: jaeger
+          access: proxy
+          url: http://jaeger:16686
+          editable: true
+  alerting:
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: slotify-alerts
+          folder: Slotify
+          interval: 1m
+          rules:
+            - uid: slotify-backend-errors
+              title: Slotify Backend Error Logs Detected
+              condition: C
+              noDataState: OK
+              execErrState: Error
+              for: 1m
+              data:
+                - refId: A
+                  relativeTimeRange:
+                    from: 300
+                    to: 0
+                  datasourceUid: victorialogs
+                  model:
+                    refId: A
+                    datasource:
+                      type: victoriametrics-logs-datasource
+                      uid: victorialogs
+                    expr: 'severity_number:in("17", "18", "19", "20") | stats by () count() as errors'
+                    queryType: statsRange
+                - refId: C
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    datasource:
+                      type: __expr__
+                      uid: __expr__
+                    expression: A
+                    conditions:
+                      - evaluator:
+                          type: gt
+                          params: [5]
+              annotations:
+                summary: "Backend errors detected in logs"
+              labels:
+                severity: warning
+# ── Jaeger (In-memory трейсинг для Minikube) ─────────────────────────────
+jaeger:
+  enabled: true
+  fullnameOverride: "jaeger"
+  provisionDataStore:
+    cassandra: false
+  allInOne:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  storage:
+    type: memory
+  collector:
+    enabled: false
+  query:
+    enabled: false
+  agent:
+    enabled: false  
