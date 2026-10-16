@@ -24,9 +24,8 @@ import (
 )
 
 type Config struct {
-	CfgView      bool
-	Out          io.Writer
-	UpMigrations bool
+	CfgView bool
+	Out     io.Writer
 }
 
 func New(ctx context.Context, fsys fs.FS, configPath string) *do.RootScope {
@@ -51,42 +50,44 @@ func registerPackages(i do.Injector, fsys fs.FS, configPath string) {
 	crypto.Package(i)                   // no dependencies
 	idgen.Package(i)                    // no dependencies
 	telemetry.Package(i)                // config
-	logger.Package(i)                   // config, telemetry
-	storage.Package(i)                  // config, telemetry
-	application.Package(i)              // config, webauthnadapter, crypto, storage, telemetry
-	presentation.Package(i)             // config, application, crypto
+	logger.Package(
+		UserIdExtractor(),
+		UserRoleExtractor(),
+		RequestIdExtractor(),
+		DomainExtractor(),
+		UseCaseExtractor(),
+	)(i) // config, telemetry
+	storage.Package(i)      // config, telemetry
+	application.Package(i)  // config, webauthnadapter, crypto, storage, telemetry
+	presentation.Package(i) // config, application, crypto
 }
 
-func Build(ctx context.Context, injector *do.RootScope, cfg Config) (*http.Server, error) {
+func Build(ctx context.Context, injector *do.RootScope, cfg Config) (err error) {
 	if cfg.CfgView {
 		if err := cfgView(injector); err != nil {
-			return nil, fmt.Errorf("cfg view: %w", err)
+			return fmt.Errorf("cfg view: %w", err)
 		}
 	}
 
 	if err := initTelemetry(injector); err != nil {
-		return nil, err
+		return fmt.Errorf("init telemetry: %w", err)
 	}
 
-	// log, err := initLogger(injector)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	if err := initStorage(ctx, injector, cfg.UpMigrations); err != nil {
-		return nil, err
-	}
-
-	srv, err := do.Invoke[*http.Server](injector)
+	_, err = do.Invoke[*storage.Storage](injector)
 	if err != nil {
-		return nil, fmt.Errorf("build http server: %w", err)
+		return fmt.Errorf("build storage: %w", err)
 	}
 
-	return srv, nil
+	_, err = do.Invoke[*http.Server](injector)
+	if err != nil {
+		return fmt.Errorf("build http server: %w", err)
+	}
+
+	return nil
 }
 
 func Run(ctx context.Context, injector *do.RootScope, cfg Config) error {
-	srv, err := Build(ctx, injector, cfg)
+	srv, err := do.Invoke[*http.Server](injector)
 	if err != nil {
 		return err
 	}
@@ -135,14 +136,10 @@ func initTelemetry(injector do.Injector) error {
 // 	return log, nil
 // }
 
-func initStorage(ctx context.Context, injector do.Injector, doMigrate bool) error {
+func UpMigrations(ctx context.Context, injector do.Injector) error {
 	srg, err := do.Invoke[*storage.Storage](injector)
 	if err != nil {
 		return fmt.Errorf("init storage: %w", err)
-	}
-
-	if !doMigrate {
-		return nil
 	}
 
 	if errUp := srg.Up(ctx); errUp != nil {
