@@ -84,7 +84,7 @@ var _ = Describe("Logger Package", func() {
 			// if it requires too much env setup, but we can verify it fails gracefully
 			// when koanf is missing.
 			injector := do.New()
-			logger.Package(injector)
+			logger.Package()(injector)
 			// Manually put config so newService passes
 			do.OverrideValue(injector, logger.Config{
 				Level:  "debug",
@@ -112,7 +112,7 @@ var _ = Describe("Logger DI Config", func() {
 		// Setup mock koanf
 		// Actually, testing newConfig requires github.com/knadh/koanf/v2
 		// Let's just override Koanf to test newConfig error path at least
-		logger.Package(injector)
+		logger.Package()(injector)
 
 		// if Koanf isn't provided, newConfig will fail
 		_, err := do.Invoke[logger.Config](injector)
@@ -124,7 +124,7 @@ var _ = Describe("Logger newSlogLogger err path", func() {
 	It("returns err when service is not provided", func() {
 		injector := do.New()
 
-		logger.Package(injector)
+		logger.Package()(injector)
 
 		_, err := do.Invoke[*slog.Logger](injector)
 		Expect(err).To(HaveOccurred())
@@ -141,7 +141,7 @@ var _ = Describe("Logger Koanf resolution", func() {
 		k.Set("logger.file.size", 10)
 		k.Set("logger.file.channel_size", 100)
 		do.ProvideValue(injector, k)
-		logger.Package(injector)
+		logger.Package()(injector)
 
 		cfg, err := do.Invoke[logger.Config](injector)
 		Expect(err).NotTo(HaveOccurred())

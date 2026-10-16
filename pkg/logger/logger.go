@@ -3,6 +3,7 @@ package logger
 import (
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 
 	phuslog "github.com/phuslu/log"
@@ -13,16 +14,17 @@ import (
 func GetSubLogger(logger *slog.Logger, group string) *slog.Logger {
 	return logger.WithGroup(group)
 }
-func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
+func Logger(cfg Config, extractors ...ExtractorFunc) (*slog.Logger, io.Closer, error) {
 	level, err := levelWrapper(cfg.Level)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	pLog := phuslog.Logger{
-		Level:  level,
-		Caller: cfg.Caller,
-		Writer: LogWriter(),
+		Level:     level,
+		Caller:    cfg.Caller,
+		TimeField: "timestamp",
+		Writer:    LogWriter(),
 	}
 	phusProvider := &phuslogotel.LoggerProvider{Log: pLog}
 
@@ -35,15 +37,20 @@ func Logger(cfg Config) (*slog.Logger, io.Closer, error) {
 	if !ok {
 		panic("logger writer does not implement io.Closer")
 	}
-	return slog.New(handler), closer, nil
+
+	ctxHandler := NewContextHandler(handler, extractors...)
+	return slog.New(ctxHandler), closer, nil
 }
 
 func LogWriter() phuslog.Writer {
 	writers := phuslog.MultiEntryWriter{
-		&phuslog.ConsoleWriter{
-			ColorOutput:    true,
-			QuoteString:    true,
-			EndWithMessage: true,
+		// &phuslog.ConsoleWriter{
+		// 	ColorOutput:    true,
+		// 	QuoteString:    true,
+		// 	EndWithMessage: true,
+		// },
+		&phuslog.IOWriter{
+			Writer: os.Stdout,
 		},
 	}
 	return &writers

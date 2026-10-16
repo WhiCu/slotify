@@ -16,17 +16,17 @@ type Service struct {
 
 func (s *Service) Shutdown() error { return s.closer.Close() }
 
-func newService(i do.Injector) (*Service, error) {
-	cfg, err := do.Invoke[Config](i)
-	if err != nil {
-		return nil, err
-	}
-	log, closer, err := Logger(cfg)
-	if err != nil {
-		return nil, wrapLoggerError(err)
-	}
-	return &Service{logger: log, closer: closer}, nil
-}
+// func newService(i do.Injector) (*Service, error) {
+// 	cfg, err := do.Invoke[Config](i)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	log, closer, err := Logger(cfg)
+// 	if err != nil {
+// 		return nil, wrapLoggerError(err)
+// 	}
+// 	return &Service{logger: log, closer: closer}, nil
+// }
 
 func newConfig(i do.Injector) (Config, error) {
 	k, err := do.Invoke[*koanf.Koanf](i)
@@ -45,8 +45,20 @@ func newSlogLogger(i do.Injector) (*slog.Logger, error) {
 	return svc.logger, nil
 }
 
-var Package = do.Package(
-	do.Lazy(newConfig),
-	do.Lazy(newService),
-	do.Lazy(newSlogLogger),
-)
+func Package(extractors ...ExtractorFunc) func(do.Injector) {
+	return do.Package(
+		do.Lazy(newConfig),
+		do.Lazy(func(i do.Injector) (*Service, error) {
+			cfg, err := do.Invoke[Config](i)
+			if err != nil {
+				return nil, err
+			}
+			log, closer, err := Logger(cfg, extractors...)
+			if err != nil {
+				return nil, wrapLoggerError(err)
+			}
+			return &Service{logger: log, closer: closer}, nil
+		}),
+		do.Lazy(newSlogLogger),
+	)
+}

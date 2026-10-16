@@ -7,23 +7,16 @@ import (
 
 type ExtractorFunc func(ctx context.Context) []slog.Attr
 
-type ctxAttrsKey struct{}
-
-func AttrsExtractor(ctx context.Context) []slog.Attr {
-	if attrs, ok := ctx.Value(ctxAttrsKey{}).([]slog.Attr); ok {
-		return attrs
-	}
-	return nil
-}
-
 type ContextHandler struct {
+	root       slog.Handler
 	next       slog.Handler
 	extractors []ExtractorFunc
 }
 
-func NewContextHandler(next slog.Handler, extractors ...ExtractorFunc) *ContextHandler {
+func NewContextHandler(root slog.Handler, extractors ...ExtractorFunc) *ContextHandler {
 	return &ContextHandler{
-		next:       next,
+		root:       root,
+		next:       root,
 		extractors: extractors,
 	}
 }
