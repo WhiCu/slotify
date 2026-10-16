@@ -9,6 +9,15 @@ import (
 	"github.com/whicu/slotify/internal/config"
 )
 
+func Logger(i do.Injector) (*slog.Logger, error) {
+	log, err := do.Invoke[*slog.Logger](i)
+	if err != nil {
+		return nil, err
+	}
+	log = log.With(slog.String("component", "storage"))
+	return log, nil
+}
+
 func newConfig(i do.Injector) (Config, error) {
 	k, err := do.Invoke[*koanf.Koanf](i)
 	if err != nil {
@@ -19,7 +28,7 @@ func newConfig(i do.Injector) (Config, error) {
 }
 
 func newStorage(i do.Injector) (*Storage, error) {
-	log, err := do.Invoke[*slog.Logger](i)
+	log, err := Logger(i)
 	if err != nil {
 		return nil, err
 	}
@@ -38,30 +47,42 @@ func newStorage(i do.Injector) (*Storage, error) {
 }
 
 func newUserRepository(i do.Injector) (*UserRepository, error) {
+	log, err := Logger(i)
+	if err != nil {
+		return nil, err
+	}
 	storage, err := do.Invoke[*Storage](i)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewUserRepository(storage), nil
+	return NewUserRepository(log, storage), nil
 }
 
 func newSpaceRepository(i do.Injector) (*SpaceRepository, error) {
+	log, err := Logger(i)
+	if err != nil {
+		return nil, err
+	}
 	storage, err := do.Invoke[*Storage](i)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewSpaceRepository(storage), nil
+	return NewSpaceRepository(log, storage), nil
 }
 
 func newReservationRepository(i do.Injector) (*ReservationRepository, error) {
+	log, err := Logger(i)
+	if err != nil {
+		return nil, err
+	}
 	storage, err := do.Invoke[*Storage](i)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewReservationRepository(storage), nil
+	return NewReservationRepository(log, storage), nil
 }
 
 var Package = do.Package(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,11 +19,13 @@ import (
 
 type ReservationRepository struct {
 	storage *Storage
+	log     *slog.Logger
 }
 
-func NewReservationRepository(storage *Storage) *ReservationRepository {
+func NewReservationRepository(log *slog.Logger, storage *Storage) *ReservationRepository {
 	return &ReservationRepository{
 		storage: storage,
+		log:     log,
 	}
 }
 

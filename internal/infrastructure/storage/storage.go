@@ -13,7 +13,12 @@ import (
 	"github.com/whicu/slotify/internal/infrastructure/storage/migrations"
 	"github.com/whicu/slotify/internal/infrastructure/storage/pg"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 )
+
+const tracerName = "github.com/whicu/slotify/internal/infrastructure/storage"
+
+var tracer = otel.Tracer(tracerName)
 
 const pingTimeout = 5 * time.Second
 
@@ -83,6 +88,9 @@ func (s *Storage) Ping(ctx context.Context) error {
 }
 
 func (s *Storage) Up(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "storage.MigrationsUp")
+	defer span.End()
+
 	sqlDB := stdlib.OpenDBFromPool(s.db)
 	defer sqlDB.Close()
 
@@ -91,12 +99,15 @@ func (s *Storage) Up(ctx context.Context) error {
 		"running migrations",
 	)
 	if err := migrations.Up(ctx, sqlDB); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	s.log.DebugContext(
 		ctx,
 		"migrations completed",
 	)
+	span.SetStatus(codes.Ok, "migrations completed successfully")
 
 	return nil
 }

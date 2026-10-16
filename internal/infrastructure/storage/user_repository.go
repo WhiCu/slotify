@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 
@@ -12,12 +13,14 @@ import (
 )
 
 type UserRepository struct {
+	log     *slog.Logger
 	storage *Storage
 }
 
-func NewUserRepository(storage *Storage) *UserRepository {
+func NewUserRepository(log *slog.Logger, storage *Storage) *UserRepository {
 	return &UserRepository{
 		storage: storage,
+		log:     log,
 	}
 }
 

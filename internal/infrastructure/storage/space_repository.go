@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 
@@ -13,12 +14,14 @@ import (
 )
 
 type SpaceRepository struct {
+	log     *slog.Logger
 	storage *Storage
 }
 
-func NewSpaceRepository(storage *Storage) *SpaceRepository {
+func NewSpaceRepository(log *slog.Logger, storage *Storage) *SpaceRepository {
 	return &SpaceRepository{
 		storage: storage,
+		log:     log,
 	}
 }
 

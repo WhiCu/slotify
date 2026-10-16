@@ -8,16 +8,30 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/whicu/slotify/internal/infrastructure/storage/pg"
 	"github.com/whicu/slotify/pkg/errkit"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type txKey struct{}
 
 func (s *Storage) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	ctx, span := tracer.Start(ctx, "db.transaction",
+		trace.WithSpanKind(trace.SpanKindClient),
+	)
+	defer span.End()
 	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return fn(ctx)
 	}
 
-	return s.runInTx(ctx, fn)
+	err := s.runInTx(ctx, fn)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "committed")
+	return nil
 }
 
 func (s *Storage) runInTx(ctx context.Context, fn func(ctx context.Context) error) (err error) {
