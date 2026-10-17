@@ -21,18 +21,14 @@ func Logger(cfg Config, extractors ...ExtractorFunc) (*slog.Logger, io.Closer, e
 	}
 
 	pLog := phuslog.Logger{
-		Level:     level,
-		Caller:    cfg.Caller,
-		TimeField: "timestamp",
-		Writer:    LogWriter(),
+		Level:  level,
+		Caller: cfg.Caller,
+		Writer: LogWriter(),
 	}
-	phusProvider := &phuslogotel.LoggerProvider{Log: pLog}
+	phusProvider := &phuslogotel.LoggerProvider{Log: pLog, DisableScopeFields: true}
 
-	consoleHandler := otelslog.NewHandler("", otelslog.WithLoggerProvider(phusProvider))
+	handler := otelslog.NewHandler("", otelslog.WithSource(true), otelslog.WithLoggerProvider(phusProvider))
 
-	otlpHandler := otelslog.NewHandler("")
-
-	handler := slog.NewMultiHandler(consoleHandler, otlpHandler)
 	closer, ok := pLog.Writer.(io.Closer)
 	if !ok {
 		panic("logger writer does not implement io.Closer")
@@ -44,11 +40,6 @@ func Logger(cfg Config, extractors ...ExtractorFunc) (*slog.Logger, io.Closer, e
 
 func LogWriter() phuslog.Writer {
 	writers := phuslog.MultiEntryWriter{
-		// &phuslog.ConsoleWriter{
-		// 	ColorOutput:    true,
-		// 	QuoteString:    true,
-		// 	EndWithMessage: true,
-		// },
 		&phuslog.IOWriter{
 			Writer: os.Stdout,
 		},
