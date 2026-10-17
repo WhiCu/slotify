@@ -17,9 +17,14 @@ victorialogs:
 otelcollector:
   enabled: true
   fullnameOverride: "otel-collector"
-  mode: deployment
+  mode: daemonset
   image:
     repository: otel/opentelemetry-collector-contrib
+  
+  service:
+    enabled: true
+    internalTrafficPolicy: Local
+
   resources:
     requests:
       cpu: 100m
@@ -27,9 +32,22 @@ otelcollector:
     limits:
       cpu: 500m
       memory: 512Mi
+
   presets:
     kubernetesAttributes:
       enabled: true
+      extractAllPodLabels: false
+    logsCollection:
+      enabled: true
+      includeCollectorLogs: false
+      storeCheckpoints: true
+    # kubeletMetrics:
+    #   enabled: true
+    # clusterMetrics:
+    #   enabled: true
+    # hostMetrics:
+    #   enabled: true
+
   config:
     receivers:
       otlp:
@@ -38,6 +56,7 @@ otelcollector:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+
       prometheus:
         config:
           scrape_configs:
@@ -45,11 +64,39 @@ otelcollector:
               scrape_interval: 15s
               static_configs:
                 - targets: ["postgres-metrics.storage.svc:9187"]
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        operators:
+          - type: container
+            id: container-parser
+          - type: json_parser
+            if: 'body matches "^\\{.*\\}$"'
+            timestamp:
+              parse_from: attributes.time
+              layout_type: gotime
+              layout: '2006-01-02T15:04:05.999999999Z07:00'
+            severity:
+              parse_from: attributes.level
+          - type: trace_parser
+            if: 'attributes.trace_id != nil'
+            trace_id: {parse_from: attributes.trace_id}
+            span_id: {parse_from: attributes.span_id}
+          - type: move
+            if: 'attributes.message != nil'
+            from: attributes.message
+            to: body
+
     extensions:
       health_check:
+
     exporters:
       otlphttp/victorialogs:
         logs_endpoint: http://victoria-logs-server:9428/insert/opentelemetry/v1/logs
+        headers:
+          VL-Ignore-Fields: k8s.pod.start_time,k8s.replicaset.uid,k8s.cluster.uid
       debug:
         verbosity: detailed
         sampling_initial: 5
@@ -57,16 +104,18 @@ otelcollector:
         endpoint: "jaeger:4317"
         tls:
           insecure: true
+  
     processors:
       batch:
       memory_limiter:
         check_interval: 5s
         limit_percentage: 80
         spike_limit_percentage: 25
+  
     service:
       pipelines:
         logs:
-          receivers: [otlp]
+          receivers: [filelog]
           processors: [memory_limiter, batch]
           exporters: [otlphttp/victorialogs, debug]
         metrics:
