@@ -1,0 +1,6 @@
+logs:
+  general:
+    format: json
+  access:
+    enabled: true
+    format: json
