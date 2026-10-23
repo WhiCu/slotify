@@ -13,6 +13,23 @@ victorialogs:
         cpu: 250m
         memory: 256Mi
 
+# ── VictoriaMetrics ──────────────────────────────────────────────────────
+victorialogs:
+victoriametrics:
+  enabled: true
+  fullnameOverride: "victoria-metrics"
+  server:
+    persistentVolume:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
 # ── OpenTelemetry Collector ──────────────────────────────────────────────
 otelcollector:
   enabled: true
@@ -64,6 +81,23 @@ otelcollector:
               scrape_interval: 15s
               static_configs:
                 - targets: ["postgres-metrics.storage.svc:9187"]
+
+            - job_name: "kubernetes-pods"
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - action: keep
+                  source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  regex: "true"
+                - action: replace
+                  source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  target_label: __metrics_path__
+                  regex: (.+)
+                - action: replace
+                  source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  target_label: __address__
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
       filelog:
         include: [/var/log/pods/*/*/*.log]
         start_at: end
@@ -72,7 +106,50 @@ otelcollector:
         operators:
           - type: container
             id: container-parser
+
           - type: json_parser
+            id: k8s-json
+            if: 'resource["k8s.namespace.name"] == "kube-system" && resource["k8s.container.name"] in ["kube-apiserver", "kube-controller-manager", "kube-scheduler"] && body matches "^\\{.*\\}$"'
+
+          - type: add
+            id: k8s-json-level
+            if: 'attributes.ts != nil && attributes.msg != nil'
+            field: attributes.level
+            value: 'EXPR(attributes.err != nil ? "error" : "info")'
+
+          - type: severity_parser
+            id: k8s-json-severity
+            if: 'attributes.ts != nil && attributes.msg != nil'
+            parse_from: attributes.level
+
+          - type: recombine
+            id: postgres-recombine
+            if: 'resource["k8s.container.name"] == "postgresql"'
+            combine_field: body
+            is_first_entry: 'body matches "^\\d{4}-\\d{2}-\\d{2} \\d{2}:"'
+            source_identifier: attributes["log.file.path"]
+            combine_with: "\n"
+            max_log_size: 1048576
+
+          - type: regex_parser
+            id: postgres-parser
+            if: 'resource["k8s.container.name"] == "postgresql" && body matches "^\\d{4}-\\d{2}-\\d{2} "'
+            regex: '(?s)^(?P<pg_time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \S+) \[(?P<pid>\d+)\] ?(?:(?P<db_user>[^@\s]*)@(?P<db_name>\S*) )?(?P<level>[A-Z0-9]+):\s+(?P<message>.*)$'
+            timestamp:
+              parse_from: attributes.pg_time
+              layout_type: gotime
+              layout: '2006-01-02 15:04:05.999 MST'
+            severity:
+              parse_from: attributes.level
+              mapping:
+                debug: [DEBUG1, DEBUG2, DEBUG3, DEBUG4, DEBUG5]
+                info: [LOG, INFO, NOTICE, STATEMENT, DETAIL, HINT, CONTEXT, QUERY]
+                warn: WARNING
+                error: ERROR
+                fatal: [FATAL, PANIC]
+
+          - type: json_parser
+            id: backend-json
             if: 'body matches "^\\{.*\\}$"'
             timestamp:
               parse_from: attributes.time
@@ -80,10 +157,12 @@ otelcollector:
               layout: '2006-01-02T15:04:05.999999999Z07:00'
             severity:
               parse_from: attributes.level
+
           - type: trace_parser
             if: 'attributes.trace_id != nil'
             trace_id: {parse_from: attributes.trace_id}
             span_id: {parse_from: attributes.span_id}
+
           - type: move
             if: 'attributes.message != nil'
             from: attributes.message

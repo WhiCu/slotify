@@ -13,7 +13,6 @@ data:
   APP_STORAGE__HOST: {{ .Values.postgres.host | quote }}
   APP_STORAGE__PORT: {{ .Values.postgres.port | quote }}
   APP_STORAGE__NAME: {{ .Values.postgres.db | quote }}
-  APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | quote }}
   APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | default "true" | quote }}
 
   APP_TELEMETRY__ENABLED: {{ .Values.telemetry.enabled | quote }}
