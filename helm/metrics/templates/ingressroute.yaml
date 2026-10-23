@@ -18,6 +18,12 @@ spec:
       services:
         - name: victoria-logs-server
           port: 9428
+    
+    - match: Host(`metrics.local`)
+      kind: Rule
+      services:
+        - name: victoria-metrics-server
+          port: 8428
 
     - match: Host(`jaeger.local`)
       kind: Rule

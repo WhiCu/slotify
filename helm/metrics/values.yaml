@@ -14,7 +14,6 @@ victorialogs:
         memory: 256Mi
 
 # ── VictoriaMetrics ──────────────────────────────────────────────────────
-victorialogs:
 victoriametrics:
   enabled: true
   fullnameOverride: "victoria-metrics"
@@ -134,19 +133,20 @@ otelcollector:
           - type: regex_parser
             id: postgres-parser
             if: 'resource["k8s.container.name"] == "postgresql" && body matches "^\\d{4}-\\d{2}-\\d{2} "'
-            regex: '(?s)^(?P<pg_time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \S+) \[(?P<pid>\d+)\] ?(?:(?P<db_user>[^@\s]*)@(?P<db_name>\S*) )?(?P<level>[A-Z0-9]+):\s+(?P<message>.*)$'
+            regex: '(?s)^(?P<pg_time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \S+) \[(?P<pid>\d+)\] ?(?:(?P<db_user>[^@\s]*)@(?P<db_name>\S*) )?(?P<pg_level>[A-Z0-9]+):\s+(?P<message>.*)$'
             timestamp:
               parse_from: attributes.pg_time
               layout_type: gotime
               layout: '2006-01-02 15:04:05.999 MST'
             severity:
-              parse_from: attributes.level
+              parse_from: attributes.pg_level
               mapping:
                 debug: [DEBUG1, DEBUG2, DEBUG3, DEBUG4, DEBUG5]
                 info: [LOG, INFO, NOTICE, STATEMENT, DETAIL, HINT, CONTEXT, QUERY]
                 warn: WARNING
                 error: ERROR
                 fatal: [FATAL, PANIC]
+                
 
           - type: json_parser
             id: backend-json
@@ -162,7 +162,19 @@ otelcollector:
             if: 'attributes.trace_id != nil'
             trace_id: {parse_from: attributes.trace_id}
             span_id: {parse_from: attributes.span_id}
+          
+          - type: add
+            id: level-from-severity
+            if: 'severity > 0 && attributes.level == nil'
+            field: attributes.level
+            value: 'EXPR(severity >= 21 ? "critical" : severity >= 17 ? "error" : severity >= 13 ? "warn" : severity >= 9 ? "info" : "debug")'
 
+          - type: move
+            id: msg-to-body
+            if: 'attributes.msg != nil && attributes.message == nil'
+            from: attributes.msg
+            to: body
+          
           - type: move
             if: 'attributes.message != nil'
             from: attributes.message
@@ -172,6 +184,10 @@ otelcollector:
       health_check:
 
     exporters:
+      otlphttp/victoriametrics:
+        metrics_endpoint: "http://victoria-metrics-server:8428/opentelemetry/v1/metrics"
+        tls:
+          insecure: true
       otlphttp/victorialogs:
         logs_endpoint: http://victoria-logs-server:9428/insert/opentelemetry/v1/logs
         headers:
@@ -200,7 +216,7 @@ otelcollector:
         metrics:
           receivers: [otlp, prometheus]
           processors: [memory_limiter, batch]
-          exporters: [debug]
+          exporters: [otlphttp/victoriametrics, debug]
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch]
