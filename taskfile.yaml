@@ -158,9 +158,13 @@ tasks:
     desc: Start Minikube cluster
     vars:
       CPUS: '{{.CPUS | default "8"}}'
-      MEMORY: '{{.MEMORY | default "6144"}}'
+      MEMORY: '{{.MEMORY | default "8192"}}' # 1024 | 2048 | 4096 | 6144 | 8192
     cmds:
-      - minikube start --driver=docker --cpus={{.CPUS}} --memory={{.MEMORY}}
+      - | 
+        minikube start --driver=docker --cpus={{.CPUS}} --memory={{.MEMORY}} \
+          --extra-config=apiserver.logging-format=json \
+          --extra-config=controller-manager.logging-format=json \
+          --extra-config=scheduler.logging-format=json
 
   k8s:stop:
     desc: Stop Minikube cluster (preserves data)
@@ -193,7 +197,7 @@ tasks:
   k8s:pods:
     desc: List pods across all active project namespaces
     cmds:
-      - kubectl get pods -n traefik -o wide
+      - kubectl get pods -n router -o wide
       - kubectl get pods -n metrics -o wide
       - kubectl get pods -n storage -o wide
       - kubectl get pods -n slotify -o wide
@@ -219,22 +223,38 @@ tasks:
     cmds:
       - kubectl logs {{.ID}} -n {{.NS}}
   
-  # ── Helm: Traefik (namespace: traefik) ──────────────────────────────────
+  # ── Helm: router (namespace: router) ──────────────────────────────────
 
-  helm:traefik:apply:
-    desc: Install or update Traefik Ingress Controller
+  helm:router:deps:
+    desc: Update dependencies for router chart
     cmds:
-      - helm repo add traefik https://traefik.github.io/charts
-      - helm repo update traefik
+      - helm dependency update helm/router
+
+  helm:router:apply:
+    desc: Deploy Traefik Ingress Controller via Helm
+    cmds:
       - |
-        helm upgrade --install traefik traefik/traefik \
-          -n traefik --create-namespace \
+        helm upgrade --install router helm/router \
+          -n router --create-namespace \
           --wait --timeout 5m
 
-  helm:traefik:uninstall:
+  helm:router:uninstall:
     desc: Remove Traefik Ingress Controller
     cmds:
-      - helm uninstall traefik -n traefik
+      - helm uninstall router -n router
+
+  helm:router:template:
+    desc: Render Traefik manifests
+    cmds:
+      - helm template router helm/router -n router --debug
+
+
+  helm:router:logs:
+    desc: Follow Traefik logs
+    vars:
+      N: '{{.N | default 100}}'
+    cmds:
+      - kubectl logs -n router deployment/router --tail={{.N}}
   # ── Helm: Metrics Stack (namespace: metrics) ────────────────────────────
 
   helm:metrics:deps:
@@ -265,7 +285,7 @@ tasks:
     vars:
       N: '{{.N | default 100}}'
     cmds:
-      - kubectl logs -n metrics deployment/otel-collector --tail={{.N}}
+      - kubectl logs -n metrics daemonset/otel-collector --tail={{.N}}
 
   # ── Helm: Slotify Application (namespace: slotify) ──────────────────────
 
@@ -390,7 +410,7 @@ tasks:
     desc: Full cold start (Minikube -> Traefik -> Metrics -> Storage -> App)
     cmds:
       - task: k8s:start
-      - task: helm:traefik:apply
+      - task: helm:router:apply
       - task: helm:metrics:apply
       - task: helm:storage:apply
       - task: k8s:deploy:slotify
