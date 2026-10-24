@@ -106,21 +106,23 @@ otelcollector:
           - type: container
             id: container-parser
 
+          # ── 1. kube-apiserver / controller-manager / scheduler (JSON) ──
           - type: json_parser
             id: k8s-json
             if: 'resource["k8s.namespace.name"] == "kube-system" && resource["k8s.container.name"] in ["kube-apiserver", "kube-controller-manager", "kube-scheduler"] && body matches "^\\{.*\\}$"'
 
           - type: add
             id: k8s-json-level
-            if: 'attributes.ts != nil && attributes.msg != nil'
+            if: 'attributes.ts != nil && attributes.msg != nil && resource["k8s.container.name"] in ["kube-apiserver", "kube-controller-manager", "kube-scheduler"]'
             field: attributes.level
             value: 'EXPR(attributes.err != nil ? "error" : "info")'
 
-          - type: severity_parser
-            id: k8s-json-severity
-            if: 'attributes.ts != nil && attributes.msg != nil'
-            parse_from: attributes.level
+          # ── 1a. etcd (JSON со своим level, время берём из container-parser) ──
+          - type: json_parser
+            id: etcd-json
+            if: 'resource["k8s.container.name"] == "etcd" && body matches "^\\{.*\\}$"'
 
+          # ── 2. Postgres ──
           - type: recombine
             id: postgres-recombine
             if: 'resource["k8s.container.name"] == "postgresql"'
@@ -133,49 +135,91 @@ otelcollector:
           - type: regex_parser
             id: postgres-parser
             if: 'resource["k8s.container.name"] == "postgresql" && body matches "^\\d{4}-\\d{2}-\\d{2} "'
-            regex: '(?s)^(?P<pg_time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \S+) \[(?P<pid>\d+)\] ?(?:(?P<db_user>[^@\s]*)@(?P<db_name>\S*) )?(?P<pg_level>[A-Z0-9]+):\s+(?P<message>.*)$'
+            regex: '(?s)^(?P<pg_time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \S+) \[(?P<pid>\d+)\] ?(?:(?P<db_user>[^@\s]*)@(?P<db_name>\S*) )?(?P<level>[A-Z0-9]+):\s+(?P<message>.*)$'
             timestamp:
               parse_from: attributes.pg_time
               layout_type: gotime
               layout: '2006-01-02 15:04:05.999 MST'
-            severity:
-              parse_from: attributes.pg_level
-              mapping:
-                debug: [DEBUG1, DEBUG2, DEBUG3, DEBUG4, DEBUG5]
-                info: [LOG, INFO, NOTICE, STATEMENT, DETAIL, HINT, CONTEXT, QUERY]
-                warn: WARNING
-                error: ERROR
-                fatal: [FATAL, PANIC]
-                
 
+          # ── 3. klog (kindnet-cni, storage-provisioner и компоненты k8s) ──
+          - type: regex_parser
+            id: klog-parser
+            if: 'body matches "^[IWEF]\\d{4} \\d{2}:\\d{2}:\\d{2}\\.\\d+ "'
+            regex: '^(?P<level>[IWEF])(?P<klog_date>\d{4}) (?P<klog_time>\d{2}:\d{2}:\d{2}\.\d+)\s+(?P<pid>\d+) (?P<source>[^\]]+)\] (?P<message>.*)$'
+
+          # ── 4. CoreDNS: DNS-запросы ──
+          - type: regex_parser
+            id: coredns-query-parser
+            if: 'resource["k8s.container.name"] == "coredns" && body matches "^\\[[A-Z]+\\] \\S+ - \\d+ \""'
+            regex: '^\[(?P<level>[A-Z]+)\] (?P<client_ip>\S+?):(?P<client_port>\d+) - (?P<query_id>\d+) "(?P<qtype>\S+) (?P<qclass>\S+) (?P<qname>\S+) (?P<proto>\S+) (?P<req_size>\d+) (?P<do_bit>\S+) (?P<bufsize>\d+)" (?P<rcode>\S+) (?P<rflags>\S+) (?P<resp_size>\d+) (?P<duration>\S+)$'
+
+          # ── 5. CoreDNS: системные сообщения ──
+          - type: regex_parser
+            id: coredns-generic-parser
+            if: 'resource["k8s.container.name"] == "coredns" && attributes.rcode == nil && body matches "^\\[[A-Z]+\\] "'
+            regex: '^\[(?P<level>[A-Z]+)\] (?P<message>.*)$'
+
+          # ── 6. Nginx (slotify-frontend): access-лог ──
+          - type: regex_parser
+            id: nginx-access-parser
+            if: 'resource["k8s.container.name"] == "slotify-frontend" && body matches "^\\S+ - \\S+ \\["'
+            regex: '^(?P<remote_addr>\S+) - (?P<remote_user>\S+) \[(?P<nginx_time>[^\]]+)\] "(?P<request>(?:(?P<method>\S+) (?P<path>\S+) (?P<protocol>[^"]*)|[^"]*))" (?P<status>\d{3}) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)" "(?P<x_forwarded_for>[^"]*)"$'
+
+          - type: add
+            id: nginx-access-level
+            if: 'attributes.status != nil && attributes.remote_addr != nil'
+            field: attributes.level
+            value: 'EXPR(attributes.status matches "^5" ? "error" : attributes.status matches "^4" ? "warn" : "info")'
+
+          # ── 7. Nginx (slotify-frontend): error-лог ──
+          - type: regex_parser
+            id: nginx-error-parser
+            if: 'resource["k8s.container.name"] == "slotify-frontend" && body matches "^\\d{4}/\\d{2}/\\d{2} "'
+            regex: '^(?P<nginx_error_time>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?:\*(?P<connection>\d+) )?(?P<message>.*)$'
+
+          # ── 8. JSON backend (и другие JSON-логи приложений) ──
           - type: json_parser
             id: backend-json
-            if: 'body matches "^\\{.*\\}$"'
+            if: 'body matches "^\\{.*\\}$" && resource["k8s.container.name"] not in ["kube-apiserver", "kube-controller-manager", "kube-scheduler", "etcd"]'
             timestamp:
               parse_from: attributes.time
               layout_type: gotime
               layout: '2006-01-02T15:04:05.999999999Z07:00'
-            severity:
-              parse_from: attributes.level
 
+          # ── 9. Корреляция трейсов ──
           - type: trace_parser
             if: 'attributes.trace_id != nil'
             trace_id: {parse_from: attributes.trace_id}
             span_id: {parse_from: attributes.span_id}
-          
-          - type: add
-            id: level-from-severity
-            if: 'severity > 0 && attributes.level == nil'
-            field: attributes.level
-            value: 'EXPR(severity >= 21 ? "critical" : severity >= 17 ? "error" : severity >= 13 ? "warn" : severity >= 9 ? "info" : "debug")'
 
+          # ── 10. Нормализация самого поля level (после severity!) ──
+          - type: add
+            id: normalize-level
+            if: 'attributes.level != nil'
+            field: attributes.level
+            value: 'EXPR({"DEBUG":"debug","DEBUG1":"debug","DEBUG2":"debug","DEBUG3":"debug","DEBUG4":"debug","DEBUG5":"debug","LOG":"info","NOTICE":"info","notice":"info","STATEMENT":"info","DETAIL":"info","HINT":"info","CONTEXT":"info","QUERY":"info","INFO":"info","I":"info","WARNING":"warn","warning":"warn","WARN":"warn","W":"warn","ERROR":"error","E":"error","FATAL":"critical","PANIC":"critical","F":"critical","crit":"critical","alert":"critical","emerg":"critical","fatal":"critical"}[attributes.level] ?? attributes.level)'
+
+          # ── 11. Severity из сырого level ──
+          - type: severity_parser
+            id: severity-from-level
+            if: 'attributes.level != nil'
+            parse_from: attributes.level
+            mapping:
+              debug: [DEBUG, DEBUG1, DEBUG2, DEBUG3, DEBUG4, DEBUG5, debug]
+              info: [I, INFO, LOG, NOTICE, STATEMENT, DETAIL, HINT, CONTEXT, QUERY, notice, info]
+              warn: [W, WARNING, WARN, warning, warn]
+              error: [E, ERROR, error]
+              fatal: [F, FATAL, PANIC, fatal, crit, alert, emerg, critical]
+
+          # ── 12. Текст сообщения в body (порядок важен) ──
           - type: move
             id: msg-to-body
             if: 'attributes.msg != nil && attributes.message == nil'
             from: attributes.msg
             to: body
-          
+
           - type: move
+            id: message-to-body
             if: 'attributes.message != nil'
             from: attributes.message
             to: body
@@ -210,7 +254,7 @@ otelcollector:
     service:
       pipelines:
         logs:
-          receivers: [filelog]
+          receivers: [otlp, filelog]
           processors: [memory_limiter, batch]
           exporters: [otlphttp/victorialogs, debug]
         metrics:

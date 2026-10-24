@@ -7,6 +7,8 @@ backend:
   resources:
     requests: { cpu: 500m, memory: 128Mi }
     limits:   { cpu: 1000m, memory: 256Mi }
+  http:
+    port: 8080
   crypto:
     hmacSecret: "CHANGE_ME_32_PLUS_CHAR_SECRET_1234567890"
     pasetoSymmetricKey: "0000000000000000000000000000000000000000000000000000000000000000"
@@ -20,6 +22,8 @@ telemetry:
   endpoint: "otel-collector.metrics.svc:4317"
   environment: "dev"
   insecure: "true"
+  prometheus:
+    path: "/metrics"
 
 frontend:
   image: slotify-frontend

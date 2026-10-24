@@ -21,3 +21,5 @@ data:
   APP_TELEMETRY__EXPORTER__CONN__INSECURE: {{ .Values.telemetry.insecure | quote }}
 
   APP_LOGGER__LEVEL: {{ .Values.logger.level | quote }}
+
+  APP_HTTP__METRICS_PATH: {{ .Values.telemetry.prometheus.path | quote }}

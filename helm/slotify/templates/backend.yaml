@@ -12,6 +12,10 @@ spec:
     metadata:
       labels:
         app: slotify-backend
+      annotations:
+        prometheus.io/scrape: {{ .Values.telemetry.enabled | quote }}
+        prometheus.io/port: {{ .Values.backend.http.port | quote }}
+        prometheus.io/path: {{ .Values.telemetry.prometheus.path | quote }}
     spec:
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
