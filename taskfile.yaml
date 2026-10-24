@@ -285,7 +285,7 @@ tasks:
     vars:
       N: '{{.N | default 100}}'
     cmds:
-      - kubectl logs -n metrics daemonset/otel-collector --tail={{.N}}
+      - kubectl logs -n metrics daemonset/otel-collector-agent --tail={{.N}}
 
   # ── Helm: Slotify Application (namespace: slotify) ──────────────────────
 
@@ -404,6 +404,7 @@ tasks:
     cmds:
       - task: helm:metrics:deps
       - task: helm:storage:deps
+      - task: helm:router:deps
       
 
   k8s:deploy:full:
