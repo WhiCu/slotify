@@ -6,6 +6,10 @@ dependencies:
     version: "*"
     repository: https://victoriametrics.github.io/helm-charts/
     alias: victorialogs
+  - name: victoria-metrics-single
+    version: "*"
+    repository: https://victoriametrics.github.io/helm-charts/
+    alias: victoriametrics
   - name: opentelemetry-collector
     version: "*"
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
