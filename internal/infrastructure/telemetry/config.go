@@ -11,8 +11,6 @@ type Config struct {
 	Exporter ExporterConfig `koanf:"exporter" validate:"required"`
 
 	Sampler SamplerConfig `koanf:"sampler" validate:"required"`
-
-	Metric MetricConfig `koanf:"metric" validate:"required"`
 }
 
 type ExporterConfig struct {
@@ -56,10 +54,6 @@ type SamplerConfig struct {
 	Ratio float64 `koanf:"ratio" validate:"gte=0,lte=1"`
 }
 
-type MetricConfig struct {
-	Interval time.Duration `koanf:"interval" validate:"required,gt=0"`
-}
-
 var defaultCfg = Config{
 	ServiceName:    "unknown-service",
 	ServiceVersion: "0.1.0",
@@ -87,8 +81,5 @@ var defaultCfg = Config{
 	},
 	Sampler: SamplerConfig{
 		Type: "always",
-	},
-	Metric: MetricConfig{
-		Interval: 15 * time.Second,
 	},
 }

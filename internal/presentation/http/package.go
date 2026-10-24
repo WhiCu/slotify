@@ -164,6 +164,7 @@ func newRouter(i do.Injector) (http.Handler, error) {
 		TrustedProxies:   cfg.TrustedProxies,
 		AllowedOrigins:   cfg.CORS.AllowedOrigins,
 		RequestSizeLimit: cfg.RequestSizeLimit,
+		MetricsPath:      cfg.MetricsPath,
 	})
 }
 

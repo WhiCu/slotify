@@ -120,7 +120,7 @@ func newTelemetry(i do.Injector) (*Service, error) {
 		return nil, fmt.Errorf("failed to init tracer provider: %w", err)
 	}
 
-	mp, err := InitMeterProvider(ctx, cfg, res, conn)
+	mp, err := InitMeterProvider(ctx, res)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init meter provider: %w", err)
 	}

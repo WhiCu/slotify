@@ -25,6 +25,8 @@ type Config struct {
 
 	TrustedProxies []string   `koanf:"trusted_proxies"`
 	CORS           CORSConfig `koanf:"cors" validate:"required"`
+
+	MetricsPath string `koanf:"metrics_path" validate:"required"`
 }
 
 func (c Config) HostPort() string { return net.JoinHostPort(c.Host, strconv.Itoa(int(c.Port))) }
@@ -41,4 +43,6 @@ var defaultCfg = Config{
 
 	MaxHeaderBytes:   1 << 20, // 1 MiB
 	RequestSizeLimit: 2 << 20, // 2 MiB
+
+	MetricsPath: "/metrics",
 }

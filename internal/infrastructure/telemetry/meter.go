@@ -5,28 +5,20 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"google.golang.org/grpc"
 )
 
-func InitMeterProvider(ctx context.Context, cfg Config, res *resource.Resource, conn *grpc.ClientConn) (*sdkmetric.MeterProvider, error) {
-	exporterOpts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithGRPCConn(conn),
-		otlpmetricgrpc.WithTimeout(cfg.Exporter.Timeout),
-	}
-
-	exporter, err := otlpmetricgrpc.New(ctx, exporterOpts...)
+func InitMeterProvider(_ context.Context, res *resource.Resource) (*sdkmetric.MeterProvider, error) {
+	exporter, err := prometheus.New()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP gRPC metric exporter: %w", err)
+		return nil, fmt.Errorf("failed to create prometheus exporter: %w", err)
 	}
 
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(
-			sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithInterval(cfg.Metric.Interval)),
-		),
+		sdkmetric.WithReader(exporter),
 	)
 
 	otel.SetMeterProvider(mp)

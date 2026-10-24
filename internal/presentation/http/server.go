@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	slogchi "github.com/samber/slog-chi"
 	api "github.com/whicu/slotify/api/http"
 )
@@ -37,6 +38,7 @@ type RouterConfig struct {
 	TrustedProxies   []string
 	AllowedOrigins   []string
 	RequestSizeLimit int64
+	MetricsPath      string
 }
 
 func NewRouter(
@@ -45,32 +47,6 @@ func NewRouter(
 	secHandler api.SecurityHandler,
 	config RouterConfig,
 ) (http.Handler, error) {
-	r := chi.NewRouter()
-
-	r.Use(
-		middleware.Recoverer,
-		middleware.RequestID,
-		slogchi.New(log),
-		middleware.RequestSize(config.RequestSizeLimit),
-	)
-
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: config.AllowedOrigins,
-		AllowedMethods: []string{
-			http.MethodGet,
-			http.MethodPost,
-			http.MethodDelete,
-			http.MethodOptions,
-		},
-		AllowedHeaders: []string{
-			"Accept",
-			"Authorization",
-			"Content-Type",
-		},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
-
 	ogenServer, err := api.NewServer(
 		h,
 		secHandler,
@@ -79,7 +55,39 @@ func NewRouter(
 		return nil, fmt.Errorf("failed to init ogen server: %w", err)
 	}
 
-	r.Mount("/", ogenServer)
+	r := chi.NewRouter()
+
+	r.Handle(config.MetricsPath, promhttp.Handler())
+
+	r.Group(func(r chi.Router) {
+		r.Use(
+			middleware.Recoverer,
+			middleware.RequestID,
+			slogchi.New(log),
+			middleware.RequestSize(config.RequestSizeLimit),
+		)
+
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins: config.AllowedOrigins,
+			AllowedMethods: []string{
+				http.MethodGet,
+				http.MethodPost,
+				http.MethodPut,
+				http.MethodPatch,
+				http.MethodDelete,
+				http.MethodOptions,
+			},
+			AllowedHeaders: []string{
+				"Accept",
+				"Authorization",
+				"Content-Type",
+			},
+			AllowCredentials: false,
+			MaxAge:           300,
+		}))
+
+		r.Mount("/", ogenServer)
+	})
 
 	return r, nil
 }
