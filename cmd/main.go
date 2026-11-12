@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -46,7 +47,7 @@ func cmdRun() error {
 			&cli.StringFlag{
 				Name:    "config",
 				Aliases: []string{"c"},
-				Value:   "./config/config.yaml",
+				Value:   "",
 				Usage:   "Path to YAML configuration file",
 				Sources: cli.EnvVars("CONFIG_PATH", "APP_CONFIG"),
 			},
@@ -75,10 +76,18 @@ func cmdRun() error {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			configPath := cmd.String("config")
-			fsys, file, err := config.ResolveDiskFS(configPath)
-			if err != nil {
-				return cli.Exit(err, ExitNoInput)
+			var fsys fs.FS
+			var file string
+			var err error
+			fmt.Println("Config path:", configPath)
+			if configPath != "" {
+				fmt.Println("Resolving config path...")
+				fsys, file, err = config.ResolveDiskFS(configPath)
+				if err != nil {
+					return cli.Exit(err, ExitNoInput)
+				}
 			}
+
 			injector := di.New(ctx, fsys, file)
 
 			if cmd.Bool("samber-web-debug") {
