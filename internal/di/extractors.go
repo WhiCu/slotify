@@ -43,7 +43,7 @@ func DomainExtractor() logger.ExtractorFunc {
 	return func(ctx context.Context) []slog.Attr {
 		var attrs []slog.Attr
 		if domain, ok := metaapp.DomainFromContext(ctx); ok {
-			attrs = append(attrs, slog.String("s", domain))
+			attrs = append(attrs, slog.String("domain", domain))
 		}
 		return attrs
 	}

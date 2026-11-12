@@ -1,8 +1,6 @@
 package config
 
 import (
-	"cmp"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,8 +14,6 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-const ConfigPath = "PATH_CONFIG"
-
 var Validate = validator.New(validator.WithRequiredStructEnabled())
 
 func NewKoanf(fsys fs.FS, path string) (*koanf.Koanf, error) {
@@ -27,9 +23,12 @@ func NewKoanf(fsys fs.FS, path string) (*koanf.Koanf, error) {
 	}
 	var k = koanf.NewWithConf(conf)
 
-	err := k.Load(fsProvider.Provider(fsys, path), yaml.Parser())
-	if err != nil {
-		return nil, fmt.Errorf("load yaml config: %w", err)
+	var err error
+	if fsys != nil {
+		err = k.Load(fsProvider.Provider(fsys, path), yaml.Parser())
+		if err != nil {
+			return nil, fmt.Errorf("load yaml config: %w", err)
+		}
 	}
 	err = k.Load(env.Provider(".", env.Opt{
 		Prefix: "APP_",
@@ -62,21 +61,6 @@ func GetConfig[T any](k *koanf.Koanf, key string, def *T) (T, error) {
 		return *def, fmt.Errorf("validate config for key '%s': %w", key, err)
 	}
 	return *def, nil
-}
-
-func ResolvePath(def string) (string, error) {
-	path := cmp.Or(os.Getenv(ConfigPath), def)
-	if path == "" {
-		return "", ErrPathNotSet
-	}
-	cleanPath := filepath.Clean(path)
-
-	//nolint:gosec // check if file exists
-	if _, err := os.Stat(cleanPath); errors.Is(err, os.ErrNotExist) {
-		return "", ErrPathNotExist
-	}
-
-	return path, nil
 }
 
 func ResolveDiskFS(path string) (fs.FS, string, error) {
