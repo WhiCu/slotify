@@ -24,7 +24,7 @@ spec:
           image: {{ .Values.backend.image }}:{{ .Values.backend.tag }}
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - containerPort: {{ .Values.backend.http.port }}
           envFrom:
             - configMapRef:
                 name: slotify-app
@@ -39,19 +39,19 @@ spec:
               memory: {{ .Values.backend.resources.limits.memory }}
           startupProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: "/ping"
+              port: {{ .Values.backend.http.port }}
             failureThreshold: 30
             periodSeconds: 2
           readinessProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: "/ping"
+              port: {{ .Values.backend.http.port }}
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /healthz
-              port: 8080
+              path: "/ping"
+              port: {{ .Values.backend.http.port }}
             periodSeconds: 20
             failureThreshold: 3
 
@@ -61,9 +61,13 @@ kind: Service
 metadata:
   name: slotify-backend
   namespace: {{ .Release.Namespace }}
+  annotations:
+    healthcheck/enabled: {{ .Values.backend.http.healthCheck.enabled | quote }}
+    healthcheck/path: {{ .Values.backend.http.healthCheck.path | quote }}
+    healthcheck/port: {{ .Values.backend.http.port | quote }}
 spec:
   selector:
     app: slotify-backend
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: {{ .Values.backend.http.port }}
+      targetPort: {{ .Values.backend.http.port }}

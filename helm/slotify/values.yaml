@@ -2,40 +2,81 @@ host: slotify.local
 
 backend:
   image: slotify-backend
+  tag: latest
   replicas: 3
   allowedOrigins: "http://slotify.local"
+  app:
+    user:
+      ttl: "24h"
   resources:
     requests: { cpu: 500m, memory: 128Mi }
     limits:   { cpu: 1000m, memory: 256Mi }
   http:
+    host: "0.0.0.0"
     port: 8080
+    readTimeout: "15s"
+    readHeaderTimeout: "5s"
+    writeTimeout: "15s"
+    idleTimeout: "60s"
+    shutdownTimeout: "10s"
+    maxHeaderBytes: "1048576"
+    maxBodyBytes: "2097152"
+    trustedProxies: []
+    healthCheck:
+      enabled: true
+      path: "/healthz"
   crypto:
     hmacSecret: "CHANGE_ME_32_PLUS_CHAR_SECRET_1234567890"
     pasetoSymmetricKey: "0000000000000000000000000000000000000000000000000000000000000000"
     pasetoSecretKey: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 
 logger:
-  level: "debug"
+  level: "trace"
+  caller: 0
 
 telemetry:
   enabled: "true"
-  endpoint: "otel-collector.metrics.svc:4317"
+  serviceName: "slotify"
+  serviceVersion: "1.0.0"
+  endpoint: "otel-collector-daemonset.metrics.svc:4317"
   environment: "dev"
   insecure: "true"
+  maxMsgSize: "16777216"
+  compressor: "gzip"
+  keepAlive:
+    time: "30s"
+    timeout: "5s"
+    permitWithoutStream: "true"
+  backoff:
+    baseDelay: "1s"
+    maxDelay: "30s"
+    multiplier: 1.6
+    jitter: 0.2
+  timeout: "5s"
+  sampler:
+    type: "always"
+    ratio: 1.0
   prometheus:
     path: "/metrics"
 
 frontend:
   image: slotify-frontend
+  tag: latest
   replicas: 3
   resources:
     requests: { cpu: 100m, memory: 32Mi }
     limits:   { cpu: 200m, memory: 64Mi }
 
 postgres:
+  accessType: "SQL"
   host: "postgres.storage.svc"
   port: "5432"
   user: postgres
   password: postgres
   db: slotify
   insecure: "true"
+  maxOpenConns: 16
+  minOpenConns: 2
+  connMaxLifetime: "1h"
+  connMaxLifetimeJitter: "10m"
+  connMaxIdleTime: "30m"

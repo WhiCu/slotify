@@ -9,17 +9,53 @@ metadata:
     "helm.sh/resource-policy": keep
 data:
   APP_HTTP__CORS__ALLOWED_ORIGINS: {{ .Values.backend.allowedOrigins | quote }}
+  APP_HTTP__HOST: {{ .Values.backend.http.host | quote }}
+  APP_HTTP__PORT: {{ .Values.backend.http.port | quote }}
+  APP_HTTP__READ_TIMEOUT: {{ .Values.backend.http.readTimeout | quote }}
+  APP_HTTP__READ_HEADER_TIMEOUT: {{ .Values.backend.http.readHeaderTimeout | quote }}
+  APP_HTTP__WRITE_TIMEOUT: {{ .Values.backend.http.writeTimeout | quote }}
+  APP_HTTP__IDLE_TIMEOUT: {{ .Values.backend.http.idleTimeout | quote }}
+  APP_HTTP__SHUTDOWN_TIMEOUT: {{ .Values.backend.http.shutdownTimeout | quote }}
+  APP_HTTP__MAX_HEADER_BYTES: {{ .Values.backend.http.maxHeaderBytes | quote }}
+  APP_HTTP__MAX_BODY_BYTES: {{ .Values.backend.http.maxBodyBytes | quote }}
+  {{- if .Values.backend.http.trustedProxies }}
+  APP_HTTP__TRUSTED_PROXIES: {{ join "," .Values.backend.http.trustedProxies | quote }}
+  {{- end }}
 
+  APP_APP__USER__TTL: {{ .Values.backend.app.user.ttl | quote }}
+
+  APP_STORAGE__ACCESS_TYPE: {{ .Values.postgres.accessType | quote }}
   APP_STORAGE__HOST: {{ .Values.postgres.host | quote }}
   APP_STORAGE__PORT: {{ .Values.postgres.port | quote }}
   APP_STORAGE__NAME: {{ .Values.postgres.db | quote }}
   APP_STORAGE__INSECURE: {{ .Values.postgres.insecure | default "true" | quote }}
+  APP_STORAGE__MIGRATIONS_DIR: {{ .Values.postgres.migrationsDir | quote }}
+  APP_STORAGE__MAX_OPEN_CONNS: {{ .Values.postgres.maxOpenConns | quote }}
+  APP_STORAGE__MIN_OPEN_CONNS: {{ .Values.postgres.minOpenConns | quote }}
+  APP_STORAGE__CONN_MAX_LIFETIME: {{ .Values.postgres.connMaxLifetime | quote }}
+  APP_STORAGE__CONN_MAX_LIFETIME_JITTER: {{ .Values.postgres.connMaxLifetimeJitter | quote }}
+  APP_STORAGE__CONN_MAX_IDLE_TIME: {{ .Values.postgres.connMaxIdleTime | quote }}
 
   APP_TELEMETRY__ENABLED: {{ .Values.telemetry.enabled | quote }}
+  APP_TELEMETRY__SERVICE_NAME: {{ .Values.telemetry.serviceName | quote }}
+  APP_TELEMETRY__SERVICE_VERSION: {{ .Values.telemetry.serviceVersion | quote }}
   APP_TELEMETRY__ENVIRONMENT: {{ .Values.telemetry.environment | quote }}
   APP_TELEMETRY__EXPORTER__CONN__ENDPOINT: {{ .Values.telemetry.endpoint | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__MAX_MSG_SIZE: {{ .Values.telemetry.maxMsgSize | quote }}
   APP_TELEMETRY__EXPORTER__CONN__INSECURE: {{ .Values.telemetry.insecure | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__COMPRESSOR: {{ .Values.telemetry.compressor | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__KEEP_ALIVE__TIME: {{ .Values.telemetry.keepAlive.time | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__KEEP_ALIVE__TIMEOUT: {{ .Values.telemetry.keepAlive.timeout | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__KEEP_ALIVE__PERMIT_WITHOUT_STREAM: {{ .Values.telemetry.keepAlive.permitWithoutStream | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__BACKOFF__BASE_DELAY: {{ .Values.telemetry.backoff.baseDelay | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__BACKOFF__MAX_DELAY: {{ .Values.telemetry.backoff.maxDelay | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__BACKOFF__MULTIPLIER: {{ .Values.telemetry.backoff.multiplier | quote }}
+  APP_TELEMETRY__EXPORTER__CONN__BACKOFF__JITTER: {{ .Values.telemetry.backoff.jitter | quote }}
+  APP_TELEMETRY__EXPORTER__TIMEOUT: {{ .Values.telemetry.timeout | quote }}
+  APP_TELEMETRY__SAMPLER__TYPE: {{ .Values.telemetry.sampler.type | quote }}
+  APP_TELEMETRY__SAMPLER__RATIO: {{ .Values.telemetry.sampler.ratio | quote }}
 
   APP_LOGGER__LEVEL: {{ .Values.logger.level | quote }}
+  APP_LOGGER__CALLER: {{ .Values.logger.caller | quote }}
 
   APP_HTTP__METRICS_PATH: {{ .Values.telemetry.prometheus.path | quote }}
