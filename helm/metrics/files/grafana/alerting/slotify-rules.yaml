@@ -1,0 +1,374 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: slotify-alerts
+    folder: Slotify
+    interval: 1m
+    rules:
+      - uid: slotify-backend-errors
+        title: Slotify Backend Error Logs Detected
+        condition: C
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victorialogs
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-logs-datasource
+                uid: victorialogs
+              expr: 'severity_number:in("17", "18", "19", "20") | stats by () count() as errors'
+              queryType: statsRange
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: sum
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
+        annotations:
+          summary: 'Backend errors: {{ $values.B }} errors in the last 5 minutes'
+        labels:
+          severity: warning
+      - uid: slotify-backend-error-rate
+        title: Slotify Backend High Error Rate (5xx)
+        condition: C
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'sum(rate(ogen_server_request_count_total{http_response_status_code=~"5.."}[5m])) / sum(rate(ogen_server_request_count_total[5m]))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+        annotations:
+          summary: 'Slotify API: доля ошибок 5xx - {{ $values.B.Value | humanizePercentage }} за последние 5 минут'
+        labels:
+          severity: critical
+          service: slotify
+
+      - uid: slotify-backend-high-latency
+        title: Slotify Backend High Latency (SLO 750ms)
+        condition: C
+        noDataState: OK
+        execErrState: Error
+        for: 3m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'sum(rate(ogen_server_duration_milliseconds_bucket{le="750"}[5m])) / sum(rate(ogen_server_duration_milliseconds_count[5m]))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0.95]
+        annotations:
+          summary: 'Slotify API: только {{ $values.B.Value | humanizePercentage }} запросов завершились за 750 мс или быстрее'
+        labels:
+          severity: warning
+          service: slotify
+
+      - uid: slotify-backend-probe-failing
+        title: Slotify Backend Healthz Probe Failing
+        condition: C
+        noDataState: Alerting
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'max_over_time({__name__="httpcheck.status", http.status_code="200"}[2m])'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0.5]
+        annotations:
+          summary: 'Slotify: проба /healthz не проходит - все проверки за 2 минуты неудачные'
+        labels:
+          severity: critical
+          service: slotify
+  
+      - uid: slotify-db-unavailable
+        title: Slotify Database Unavailable (pg_up)
+        condition: C
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'avg_over_time(((min_over_time(pg_up[1m]) default 0) == bool 1)[5m])'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0.5]
+        annotations:
+          summary: 'Slotify: База данных недоступна (pg_up = 0) большую часть времени в течение последних 5 минут'
+        labels:
+          severity: critical
+          service: slotify
+  
+      - uid: slotify-backend-goroutine-leak
+        title: Slotify Backend Goroutine Leak
+        condition: C
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'max by (host_name) (go_goroutine_count{service_name="slotify"})'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [500]
+        annotations:
+          summary: 'Slotify backend ({{ $labels.host_name }}): аномальное число горутин ({{ $values.B }})'
+        labels:
+          severity: warning
+          service: slotify
+
+      - uid: slotify-backend-high-memory
+        title: Slotify Backend High Heap Usage
+        condition: C
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: victoriametrics
+            model:
+              refId: A
+              datasource:
+                type: victoriametrics-metrics-datasource
+                uid: victoriametrics
+              expr: 'sum by (host_name) (go_memory_used_bytes{service_name="slotify"})'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: reduce
+              expression: A
+              reducer: last
+              settings:
+                mode: dropNN
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              datasource:
+                type: __expr__
+                uid: __expr__
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [201326592]
+        annotations:
+          summary: 'Slotify backend ({{ $labels.host_name }}): Go runtime memory {{ $values.B.Value | humanize1024 }}'
+        labels:
+          severity: warning
+          service: slotify

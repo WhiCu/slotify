@@ -1,0 +1,46 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: grafana
+data:
+  slotify-rules.yaml: |
+{{ .Files.Get "files/grafana/alerting/slotify-rules.yaml" | nindent 4 }}
+
+  telegram-notifications.yaml: |
+    apiVersion: 1
+    contactPoints:
+      - orgId: 1
+        name: Telegram Alerts
+        receivers:
+          - uid: telegram-slotify
+            type: telegram
+            settings:
+              bottoken: {{ .Values.grafana.env.TELEGRAM_BOT_TOKEN | quote }}
+              chatid: {{ .Values.grafana.env.TELEGRAM_CHAT_ID | quote }}
+              parse_mode: "HTML"
+              message: |
+                {{ `{{ if gt (len .Alerts.Firing) 0 -}}
+                🔥 <b>Сработали алерты ({{ len .Alerts.Firing }}):</b>
+                {{ range .Alerts.Firing }}
+                🚨 <b>{{ .Labels.alertname }}</b> [<code>{{ .Labels.severity }}</code>]
+                {{ if .Annotations.summary }}<b>Сводка:</b> {{ .Annotations.summary }}{{ end }}
+                {{ if .Annotations.description }}<b>Описание:</b> {{ .Annotations.description }}{{ end }}
+                {{ end }}
+                {{- end }}
+
+                {{ if gt (len .Alerts.Resolved) 0 -}}
+                ✅ <b>Проблемы устранены ({{ len .Alerts.Resolved }}):</b>
+                {{ range .Alerts.Resolved }}
+                • <b>{{ .Labels.alertname }}</b>
+                {{ end }}
+                {{- end }}` }}
+            disableResolveMessage: false
+    policies:
+      - orgId: 1
+        receiver: Telegram Alerts
+        group_by: ['grafana_folder', 'alertname']
+{{- end }}

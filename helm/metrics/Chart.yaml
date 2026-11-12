@@ -2,6 +2,8 @@ apiVersion: v2
 name: metrics
 version: 0.2.0
 dependencies:
+
+  # charts for anything related to metrics, logging, and tracing
   - name: victoria-logs-single
     version: "*"
     repository: https://victoriametrics.github.io/helm-charts/
@@ -10,10 +12,6 @@ dependencies:
     version: "*"
     repository: https://victoriametrics.github.io/helm-charts/
     alias: victoriametrics
-  - name: opentelemetry-collector
-    version: "*"
-    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-    alias: otelcollector
   - name: grafana
     version: "*"
     repository: https://grafana.github.io/helm-charts
@@ -22,3 +20,14 @@ dependencies:
     version: "*"
     repository: https://jaegertracing.github.io/helm-charts
     alias: jaeger
+
+  # charts for OpenTelemetry Collector
+  - name: opentelemetry-collector
+    version: "*"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    alias: otelcollector-deployment
+  - name: opentelemetry-collector
+    version: "*"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    alias: otelcollector-daemonset
+  
