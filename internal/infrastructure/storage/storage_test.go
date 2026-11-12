@@ -37,7 +37,7 @@ func BuildStorageConfig(ctx context.Context, ctr *postgres.PostgresContainer) (s
 		Name:            testutil.TestDBName,
 		Insecure:        true,
 		MaxOpenConns:    10,
-		MaxIdleConns:    2,
+		MinOpenConns:    2,
 		ConnMaxLifetime: 5 * time.Minute,
 		ConnMaxIdleTime: 5 * time.Minute,
 	}, nil

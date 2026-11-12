@@ -35,8 +35,9 @@ func NewStorage(ctx context.Context, log *slog.Logger, cfg Config) (*Storage, er
 	}
 
 	connCfg.MaxConns = cfg.MaxOpenConns
-	connCfg.MinConns = cfg.MaxIdleConns
+	connCfg.MinConns = cfg.MinOpenConns
 	connCfg.MaxConnLifetime = cfg.ConnMaxLifetime
+	connCfg.MaxConnLifetimeJitter = cfg.ConnMaxLifetimeJitter
 	connCfg.MaxConnIdleTime = cfg.ConnMaxIdleTime
 
 	// telemetry

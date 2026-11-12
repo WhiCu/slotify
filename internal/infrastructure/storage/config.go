@@ -9,8 +9,6 @@ import (
 type Config struct {
 	AccessType string `koanf:"access_type" validate:"required,oneof=SQL"`
 
-	MigrationsDir string `koanf:"migrations_dir" validate:"required"`
-
 	Host string `koanf:"host" validate:"required,hostname|ip"`
 	Port string `koanf:"port" validate:"required,numeric"`
 	User string `koanf:"user" validate:"required"`
@@ -20,10 +18,11 @@ type Config struct {
 	Insecure bool `koanf:"insecure"`
 
 	MaxOpenConns int32 `koanf:"max_open_conns" validate:"required,gt=0"`
-	MaxIdleConns int32 `koanf:"max_idle_conns" validate:"required,gt=0,ltefield=MaxOpenConns"`
+	MinOpenConns int32 `koanf:"min_open_conns" validate:"required,gt=0,ltefield=MaxOpenConns"`
 
-	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime" validate:"required,gt=0"`
-	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time" validate:"required,gt=0"`
+	ConnMaxLifetime       time.Duration `koanf:"conn_max_lifetime" validate:"required,gt=0"`
+	ConnMaxLifetimeJitter time.Duration `koanf:"conn_max_lifetime_jitter" validate:"required,gte=0"`
+	ConnMaxIdleTime       time.Duration `koanf:"conn_max_idle_time" validate:"required,gt=0"`
 }
 
 var defaultCfg = Config{
@@ -32,10 +31,11 @@ var defaultCfg = Config{
 	Insecure: true,
 
 	MaxOpenConns: 16,
-	MaxIdleConns: 16,
+	MinOpenConns: 2,
 
-	ConnMaxLifetime: 30 * time.Second,
-	ConnMaxIdleTime: 30 * time.Second,
+	ConnMaxLifetime:       1 * time.Hour,
+	ConnMaxLifetimeJitter: 10 * time.Minute,
+	ConnMaxIdleTime:       30 * time.Minute,
 }
 
 func (c Config) HostPort() string {
