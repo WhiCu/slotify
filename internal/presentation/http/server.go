@@ -50,6 +50,7 @@ func NewRouter(
 	ogenServer, err := api.NewServer(
 		h,
 		secHandler,
+		api.WithMiddleware(Chaos()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init ogen server: %w", err)
@@ -57,7 +58,18 @@ func NewRouter(
 
 	r := chi.NewRouter()
 
-	r.Handle(config.MetricsPath, promhttp.Handler())
+	r.Group(func(r chi.Router) {
+		r.Use(
+			middleware.Recoverer,
+			middleware.RequestID,
+			slogchi.New(log),
+			middleware.RequestSize(config.RequestSizeLimit),
+		)
+		r.Handle(config.MetricsPath, promhttp.Handler())
+		r.HandleFunc("/ping", OK)
+		r.Post("/chaos", ChaosOptions)
+		r.Get("/chaos", ChaosGet)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(
@@ -90,4 +102,9 @@ func NewRouter(
 	})
 
 	return r, nil
+}
+
+func OK(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
 }
