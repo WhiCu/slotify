@@ -62,7 +62,7 @@ telemetry:
 frontend:
   image: slotify-frontend
   tag: latest
-  replicas: 3
+  replicas: 1
   resources:
     requests: { cpu: 100m, memory: 32Mi }
     limits:   { cpu: 200m, memory: 64Mi }
