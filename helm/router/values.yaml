@@ -1,6 +1,14 @@
-logs:
-  general:
-    format: json
-  access:
-    enabled: true
-    format: json
+traefik:
+  additionalArguments:
+    - "--log.format=json"
+    - "--accesslog=true"
+    - "--accesslog.format=json"
+  providers:
+    kubernetesGateway:
+      enabled: true
+    kubernetesCRD:
+      enabled: false
+    kubernetesIngress:
+      enabled: false
+  gateway:
+    enabled: false
