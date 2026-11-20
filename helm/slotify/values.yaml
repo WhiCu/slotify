@@ -3,7 +3,10 @@ host: slotify.local
 backend:
   image: slotify-backend
   tag: latest
-  replicas: 3
+  replicas:
+    minAvailable: 1
+    min: 2
+    max: 6
   allowedOrigins: "http://slotify.local"
   app:
     user:

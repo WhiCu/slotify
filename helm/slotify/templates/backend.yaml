@@ -4,10 +4,10 @@ metadata:
   name: slotify-backend
   namespace: {{ .Release.Namespace }}
 spec:
-  replicas: {{ .Values.backend.replicas }}
   selector:
     matchLabels:
       app: slotify-backend
+      versionTag: {{ .Values.backend.tag }}
   template:
     metadata:
       labels:
@@ -24,7 +24,9 @@ spec:
           image: {{ .Values.backend.image }}:{{ .Values.backend.tag }}
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: {{ .Values.backend.http.port }}
+            - name: http
+              containerPort: {{ .Values.backend.http.port }}
+              protocol: TCP
           envFrom:
             - configMapRef:
                 name: slotify-app
@@ -40,18 +42,18 @@ spec:
           startupProbe:
             httpGet:
               path: "/ping"
-              port: {{ .Values.backend.http.port }}
+              port: http
             failureThreshold: 30
             periodSeconds: 2
           readinessProbe:
             httpGet:
               path: "/ping"
-              port: {{ .Values.backend.http.port }}
+              port: http
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: "/ping"
-              port: {{ .Values.backend.http.port }}
+              port: http
             periodSeconds: 20
             failureThreshold: 3
 
@@ -69,5 +71,7 @@ spec:
   selector:
     app: slotify-backend
   ports:
-    - port: {{ .Values.backend.http.port }}
-      targetPort: {{ .Values.backend.http.port }}
+    - name: http
+      port: {{ .Values.backend.http.port }}
+      targetPort: http
+      protocol: TCP

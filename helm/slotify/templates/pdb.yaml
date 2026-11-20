@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: slotify-backend-pdb
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.backend.replicas.minAvailable }}
+  selector:
+    matchLabels:
+      app: slotify-backend
